@@ -117,3 +117,4 @@ C:\Users\smuto\source\repos\GameDB\GameDB.Api\obj\Release\net8.0\refint\GameDB.A
 C:\Users\smuto\source\repos\GameDB\GameDB.Api\obj\Release\net8.0\GameDB.Api.pdb
 C:\Users\smuto\source\repos\GameDB\GameDB.Api\obj\Release\net8.0\GameDB.Api.genruntimeconfig.cache
 C:\Users\smuto\source\repos\GameDB\GameDB.Api\obj\Release\net8.0\ref\GameDB.Api.dll
+C:\Users\smuto\source\repos\GameDB\GameDB.Api\obj\Release\net8.0\GameDB.Api.sourcelink.json

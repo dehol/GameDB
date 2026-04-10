@@ -15,3 +15,4 @@ C:\Users\smuto\source\repos\GameDB\GameDB.Infrastructure\obj\Debug\net8.0\refint
 C:\Users\smuto\source\repos\GameDB\GameDB.Infrastructure\obj\Debug\net8.0\GameDB.Infrastructure.pdb
 C:\Users\smuto\source\repos\GameDB\GameDB.Infrastructure\obj\Debug\net8.0\GameDB.Infrastructure.genruntimeconfig.cache
 C:\Users\smuto\source\repos\GameDB\GameDB.Infrastructure\obj\Debug\net8.0\ref\GameDB.Infrastructure.dll
+C:\Users\smuto\source\repos\GameDB\GameDB.Infrastructure\obj\Debug\net8.0\GameDB.Infrastructure.sourcelink.json

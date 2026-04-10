@@ -9,3 +9,4 @@ C:\Users\smuto\source\repos\GameDB\GameDB.Core\obj\Debug\net8.0\GameDB.Core.dll
 C:\Users\smuto\source\repos\GameDB\GameDB.Core\obj\Debug\net8.0\refint\GameDB.Core.dll
 C:\Users\smuto\source\repos\GameDB\GameDB.Core\obj\Debug\net8.0\GameDB.Core.pdb
 C:\Users\smuto\source\repos\GameDB\GameDB.Core\obj\Debug\net8.0\ref\GameDB.Core.dll
+C:\Users\smuto\source\repos\GameDB\GameDB.Core\obj\Debug\net8.0\GameDB.Core.sourcelink.json

@@ -117,3 +117,4 @@ C:\Users\smuto\source\repos\GameDB\GameDB.Api\bin\Debug\net8.0\Microsoft.Identit
 C:\Users\smuto\source\repos\GameDB\GameDB.Api\bin\Debug\net8.0\Microsoft.IdentityModel.Protocols.OpenIdConnect.dll
 C:\Users\smuto\source\repos\GameDB\GameDB.Api\bin\Debug\net8.0\Microsoft.IdentityModel.Tokens.dll
 C:\Users\smuto\source\repos\GameDB\GameDB.Api\bin\Debug\net8.0\System.IdentityModel.Tokens.Jwt.dll
+C:\Users\smuto\source\repos\GameDB\GameDB.Api\obj\Debug\net8.0\GameDB.Api.sourcelink.json
