@@ -1,4 +1,5 @@
 using GameDB.Core.Configuration;
+using GameDB.Core.Interfaces;
 using Microsoft.Extensions.Logging;
 using System.Text.Json;
 using System.Text.RegularExpressions;

@@ -1,6 +1,30 @@
+using GameDB.Core.Configuration;
+using GameDB.Core.Interfaces;
+using GameDB.Core.Models;
+using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Logging;
+using System.Text.Json;
+
+namespace GameDB.Infrastructure.Services;
+
+/// <summary>
+/// Processes raw data from RawGameData table into StagingGame table
+/// </summary>
 public class DataStagingService : IDataStagingService
 {
-    // конструктор
+    private readonly AppDbContext _db;
+    private readonly ILogger<DataStagingService> _logger;
+    private readonly ImportSettings _settings;
+
+    public DataStagingService(
+        AppDbContext db,
+        ILogger<DataStagingService> logger,
+        ImportSettings settings)
+    {
+        _db = db;
+        _logger = logger;
+        _settings = settings;
+    }
 
     public async Task ProcessRawDataAsync(ImportJob job, CancellationToken ct)
     {
@@ -49,7 +73,11 @@ public class DataStagingService : IDataStagingService
             catch (Exception ex)
             {
                 errors++;
-                // ... обробка помилок (залиш як було)
+                raw.ProcessingAttempts++;
+                raw.ProcessingError = ex.Message;
+
+                if (raw.ProcessingAttempts >= _settings.MaxRetries)
+                    raw.Processed = true;
             }
         }
 
@@ -66,7 +94,62 @@ public class DataStagingService : IDataStagingService
     }
 
     // ProcessRawgData, CreateStagingGameFromRawg, UpdateStagingGameFromRawg, NormalizeTitle, ParseRawgDate — залишаються майже без змін (можеш скопіювати з попередньої відповіді)
-    
+	private StagingGame? ProcessRawgData(RawGameData raw, Dictionary<string, StagingGame> existing)
+    {
+        var rawgGame = JsonSerializer.Deserialize<RawgGame>(raw.RawJson);
+        if (rawgGame == null) return null;
+
+        var normalized = NormalizeTitle(rawgGame.Name);
+
+        if (existing.TryGetValue(normalized, out var existingStaging))
+        {
+            UpdateStagingGameFromRawg(existingStaging, rawgGame);
+            return null;
+        }
+
+        return CreateStagingGameFromRawg(rawgGame, normalized);
+    }
+	private static StagingGame CreateStagingGameFromRawg(RawgGame rawg, string normalizedTitle)
+    {
+        return new StagingGame
+        {
+            NormalizedTitle = normalizedTitle,
+            Title = rawg.Name,
+            IgdbId = rawg.Id.ToString(),
+            SteamAppId = rawg.SteamAppId?.ToString(),
+            Description = rawg.Description,
+            ReleaseDate = ParseRawgDate(rawg.Released),
+            Developer = rawg.Developers.FirstOrDefault()?.Name,
+            Publisher = rawg.Publishers.FirstOrDefault()?.Name,
+            Genres = rawg.Genres.Select(g => g.Name).ToList(),
+            CreatedAt = DateTime.UtcNow,
+            UpdatedAt = DateTime.UtcNow
+        };
+    }
+private static void UpdateStagingGameFromRawg(StagingGame staging, RawgGame rawg)
+    {
+        staging.IgdbId = rawg.Id.ToString();
+        staging.Description = rawg.Description;
+        staging.ReleaseDate = ParseRawgDate(rawg.Released);
+        staging.Developer = rawg.Developers.FirstOrDefault()?.Name;
+        staging.Publisher = rawg.Publishers.FirstOrDefault()?.Name;
+        staging.Genres = rawg.Genres.Select(g => g.Name).ToList();
+        staging.SteamAppId = rawg.SteamAppId?.ToString();
+        staging.UpdatedAt = DateTime.UtcNow;
+    }
+private static DateOnly? ParseRawgDate(string? date) =>
+        DateOnly.TryParse(date, out var d) ? d : null;
+
+    private static string NormalizeTitle(string title)
+    {
+        if (string.IsNullOrWhiteSpace(title)) return "";
+        return new string(title.ToLower()
+            .Replace(":", "").Replace("-", " ").Replace("'", "")
+            .Replace("™", "").Replace("®", "").Replace("©", "")
+            .Where(c => char.IsLetterOrDigit(c) || c == ' ')
+            .ToArray())
+            .Trim().Replace("  ", " ");
+    }
     private void ProcessSteamPriceData(RawGameData raw, Dictionary<string, StagingGame> bySteamId)
     {
         using var doc = JsonDocument.Parse(raw.RawJson);
