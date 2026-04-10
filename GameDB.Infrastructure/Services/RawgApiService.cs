@@ -108,7 +108,37 @@ public class RawgApiService : IRawgApiService
             return null;
         }
     }
+    public async Task<List<RawgGame>> SearchGamesAsync(string query, int limit = 500)
+    {
+        _logger.LogInformation("Searching RAWG for games: {Query}, limit: {Limit}", query, limit);
+        
+        var games = new List<RawgGame>();
+        var page = 1;
+        var remaining = limit;
+        
+        while (remaining > 0)
+        {
+            var pageSize = Math.Min(remaining, _settings.PageSize);
+            var url = $"{_settings.ApiBaseUrl}/games?key={Uri.EscapeDataString(_settings.ApiKey)}" +
+                      $"&search={Uri.EscapeDataString(query)}" +
+                      $"&page_size={pageSize}&page={page}";
 
+            var response = await ExecuteRequestAsync<RawgListResponse<RawgGameResponse>>(url);
+            
+            if (response.Results.Count == 0)
+                break;
+
+            games.AddRange(response.Results.Select(MapToRawgGame));
+            remaining -= response.Results.Count;
+            page++;
+
+            if (response.Next == null)
+                break;
+        }
+
+        _logger.LogInformation("Found {Count} games from RAWG search", games.Count);
+        return games;
+    }
     private async Task<T> ExecuteRequestAsync<T>(string url, CancellationToken ct = default)
     {
         var response = await _httpClient.GetAsync(url, ct);
@@ -131,8 +161,10 @@ public class RawgApiService : IRawgApiService
         if (steamStore?.Url is not null)
         {
             var match = Regex.Match(steamStore.Url, @"/app/(\d+)");
-            if (match.Success) int.TryParse(match.Groups[1].Value, out var id);
-            steamId = id;
+            if (match.Success && int.TryParse(match.Groups[1].Value, out var parsedId))
+            {
+                steamId = parsedId;
+            }
         }
 
         return new RawgGame

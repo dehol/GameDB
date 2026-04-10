@@ -13,7 +13,7 @@ using System.Reflection;
 [assembly: System.Reflection.AssemblyCompanyAttribute("GameDB.Core")]
 [assembly: System.Reflection.AssemblyConfigurationAttribute("Debug")]
 [assembly: System.Reflection.AssemblyFileVersionAttribute("1.0.0.0")]
-[assembly: System.Reflection.AssemblyInformationalVersionAttribute("1.0.0+ec1d0ffb5019ba8093b7d60141f6fa5b9545ec3d")]
+[assembly: System.Reflection.AssemblyInformationalVersionAttribute("1.0.0+8718f4b7aad41f0f82429af5335c5e5102706a22")]
 [assembly: System.Reflection.AssemblyProductAttribute("GameDB.Core")]
 [assembly: System.Reflection.AssemblyTitleAttribute("GameDB.Core")]
 [assembly: System.Reflection.AssemblyVersionAttribute("1.0.0.0")]

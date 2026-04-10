@@ -49,10 +49,11 @@ public class RawDataCollector : IRawDataCollector
 
     private async Task CollectFromRawgAsync(ImportJob job, CancellationToken ct)
     {
-        var existingIds = await _db.RawGameData
-            .Where(r => r.Source == "RAWG")
-            .Select(r => r.ExternalId)
-            .ToHashSetAsync(ct);
+        var existingIds = (await _db.RawGameData
+        .Where(r => r.Source == "RAWG")
+        .Select(r => r.ExternalId)
+        .ToListAsync(ct))
+        .ToHashSet();
 
         var games = await _rawgApi.GetPopularGamesAsync(
             _settings.IgdbPopularGamesLimit,
@@ -77,7 +78,7 @@ public class RawDataCollector : IRawDataCollector
         await _db.RawGameData.AddRangeAsync(entities, ct);
         await _db.SaveChangesAsync(ct);
 
-        _logger.LogInformation("✅ RAWG: {Count} games saved", entities.Count);
+        _logger.LogInformation("RAWG: {Count} games saved", entities.Count);
     }
 
     private async Task CollectSteamPricesAsync(ImportJob job, CancellationToken ct)
