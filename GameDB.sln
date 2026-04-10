@@ -1,0 +1,34 @@
+﻿
+Microsoft Visual Studio Solution File, Format Version 12.00
+# Visual Studio Version 17
+VisualStudioVersion = 17.0.31903.59
+MinimumVisualStudioVersion = 10.0.40219.1
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "GameDB.Api", "GameDB.Api\GameDB.Api.csproj", "{9F13BB6B-F392-4E51-874F-8BD1ABA40F73}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "GameDB.Core", "GameDB.Core\GameDB.Core.csproj", "{F4CDACFD-F466-4CEF-904F-B3056D71A1C5}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "GameDB.Infrastructure", "GameDB.Infrastructure\GameDB.Infrastructure.csproj", "{1DFCEFB7-D351-423C-A020-0153D2C3C025}"
+EndProject
+Global
+	GlobalSection(SolutionConfigurationPlatforms) = preSolution
+		Debug|Any CPU = Debug|Any CPU
+		Release|Any CPU = Release|Any CPU
+	EndGlobalSection
+	GlobalSection(SolutionProperties) = preSolution
+		HideSolutionNode = FALSE
+	EndGlobalSection
+	GlobalSection(ProjectConfigurationPlatforms) = postSolution
+		{9F13BB6B-F392-4E51-874F-8BD1ABA40F73}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{9F13BB6B-F392-4E51-874F-8BD1ABA40F73}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{9F13BB6B-F392-4E51-874F-8BD1ABA40F73}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{9F13BB6B-F392-4E51-874F-8BD1ABA40F73}.Release|Any CPU.Build.0 = Release|Any CPU
+		{F4CDACFD-F466-4CEF-904F-B3056D71A1C5}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{F4CDACFD-F466-4CEF-904F-B3056D71A1C5}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{F4CDACFD-F466-4CEF-904F-B3056D71A1C5}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{F4CDACFD-F466-4CEF-904F-B3056D71A1C5}.Release|Any CPU.Build.0 = Release|Any CPU
+		{1DFCEFB7-D351-423C-A020-0153D2C3C025}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{1DFCEFB7-D351-423C-A020-0153D2C3C025}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{1DFCEFB7-D351-423C-A020-0153D2C3C025}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{1DFCEFB7-D351-423C-A020-0153D2C3C025}.Release|Any CPU.Build.0 = Release|Any CPU
+	EndGlobalSection
+EndGlobal

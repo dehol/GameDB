@@ -1,0 +1,12 @@
+category: Frontend
+interface:
+  display_name: React Best Practices
+  short_description: Optimize React and Next.js performance with Vercel's guidelines.
+  icon_dark: './assets/icon-dark.png'
+  icon_light: './assets/icon-light.png'
+  default_prompt: Help me optimize my React code for performance.
+  label:
+    - react
+    - nextjs
+    - performance
+    - frontend

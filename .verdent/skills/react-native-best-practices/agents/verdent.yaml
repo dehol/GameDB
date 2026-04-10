@@ -1,0 +1,11 @@
+category: Frontend
+interface:
+  display_name: React Native Best Practices
+  short_description: Optimize React Native app performance and bundle size.
+  icon_dark: './assets/icon-dark.png'
+  icon_light: './assets/icon-light.png'
+  default_prompt: Help me optimize my React Native app.
+  label:
+    - react-native
+    - mobile
+    - performance

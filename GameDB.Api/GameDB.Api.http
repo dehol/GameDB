@@ -1,0 +1,2 @@
+GET http://localhost:5212/weatherforecast
+Accept: application/json

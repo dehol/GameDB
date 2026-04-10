@@ -1,0 +1,12 @@
+category: Frontend
+interface:
+  display_name: React Composition Patterns
+  short_description: Scalable React component architecture and composition patterns.
+  icon_dark: './assets/icon-dark.png'
+  icon_light: './assets/icon-light.png'
+  default_prompt: Help me design better React component architecture.
+  label:
+    - react
+    - architecture
+    - design-patterns
+    - frontend

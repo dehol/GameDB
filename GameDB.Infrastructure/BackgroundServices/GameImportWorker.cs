@@ -1,0 +1,148 @@
+using GameDB.Core.Interfaces;
+using GameDB.Core.Models;
+using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Hosting;
+using Microsoft.Extensions.Logging;
+using System.Threading.Channels;
+
+namespace GameDB.Infrastructure.BackgroundServices;
+
+/// <summary>
+/// Background service that processes import pipelines.
+/// Coordinates 3 phases: Collect → Stage → Import
+/// </summary>
+public class GameImportWorker : BackgroundService
+{
+    private readonly IServiceProvider _serviceProvider;
+    private readonly ILogger<GameImportWorker> _logger;
+    private readonly Channel<int> _pipelineChannel;
+
+    public GameImportWorker(
+        IServiceProvider serviceProvider,
+        ILogger<GameImportWorker> logger,
+        Channel<int> pipelineChannel)
+    {
+        _serviceProvider = serviceProvider;
+        _logger = logger;
+        _pipelineChannel = pipelineChannel;
+    }
+
+    protected override async Task ExecuteAsync(CancellationToken stoppingToken)
+    {
+        _logger.LogInformation("🎮 Game Import Worker started");
+
+        await foreach (var pipelineId in _pipelineChannel.Reader.ReadAllAsync(stoppingToken))
+        {
+            try
+            {
+                await ProcessPipelineAsync(pipelineId, stoppingToken);
+            }
+            catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested)
+            {
+                _logger.LogInformation("Game Import Worker stopped due to application shutdown");
+                break;
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "❌ Pipeline {PipelineId} failed with unhandled exception", pipelineId);
+            }
+        }
+
+        _logger.LogInformation("🎮 Game Import Worker stopped");
+    }
+
+    private async Task ProcessPipelineAsync(int pipelineId, CancellationToken ct)
+    {
+        using var scope = _serviceProvider.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+        var collector = scope.ServiceProvider.GetRequiredService<IRawDataCollector>();
+        var stagingService = scope.ServiceProvider.GetRequiredService<IDataStagingService>();
+        var importService = scope.ServiceProvider.GetRequiredService<IDataImportService>();
+
+        var job = await db.ImportJobs.FindAsync(pipelineId, ct);
+        if (job == null)
+        {
+            _logger.LogError("Pipeline {PipelineId} not found in database", pipelineId);
+            return;
+        }
+
+        var startTime = DateTime.UtcNow;
+        _logger.LogInformation("🚀 Starting pipeline {PipelineId}", pipelineId);
+
+        try
+        {
+            // Phase 1: Collect raw data
+            await collector.CollectRawDataAsync(job, ct);
+            
+            if (await IsCancelledAsync(job, db, ct))
+            {
+                _logger.LogInformation("Pipeline {PipelineId} cancelled after collection phase", pipelineId);
+                return;
+            }
+
+            // Phase 2: Process to staging
+            await stagingService.ProcessRawDataAsync(job, ct);
+            
+            if (await IsCancelledAsync(job, db, ct))
+            {
+                _logger.LogInformation("Pipeline {PipelineId} cancelled after staging phase", pipelineId);
+                return;
+            }
+
+            // Phase 3: Import to main tables
+            await importService.ImportStagedDataAsync(job, ct);
+
+            // Mark as completed
+            await MarkJobCompletedAsync(job, db, startTime, ct);
+            
+            _logger.LogInformation(
+                "✅ Pipeline {PipelineId} completed in {Duration:mm\\:ss}. " +
+                "Games: {GamesCreated}, Offers: {OffersCreated}, Errors: {Errors}",
+                pipelineId, DateTime.UtcNow - startTime, 
+                job.TotalGamesCreated, job.TotalOffersCreated, job.ErrorCount);
+        }
+        catch (OperationCanceledException)
+        {
+            await MarkJobCancelledAsync(job, db, ct);
+            throw;
+        }
+        catch (Exception ex)
+        {
+            await MarkJobFailedAsync(job, db, ex, ct);
+            _logger.LogError(ex, "❌ Pipeline {PipelineId} failed", pipelineId);
+        }
+    }
+
+    private static async Task<bool> IsCancelledAsync(ImportJob job, AppDbContext db, CancellationToken ct)
+    {
+        if (ct.IsCancellationRequested)
+            return true;
+
+        await db.Entry(job).ReloadAsync(ct);
+        return job.Status == "cancelled";
+    }
+
+    private static async Task MarkJobCompletedAsync(ImportJob job, AppDbContext db, DateTime startTime, CancellationToken ct)
+    {
+        job.Status = "completed";
+        job.CompletedAt = DateTime.UtcNow;
+        job.CurrentPhase = "completed";
+        await db.SaveChangesAsync(ct);
+    }
+
+    private static async Task MarkJobCancelledAsync(ImportJob job, AppDbContext db, CancellationToken ct)
+    {
+        job.Status = "cancelled";
+        job.CompletedAt = DateTime.UtcNow;
+        job.ErrorMessage = "Operation cancelled";
+        await db.SaveChangesAsync(ct);
+    }
+
+    private static async Task MarkJobFailedAsync(ImportJob job, AppDbContext db, Exception ex, CancellationToken ct)
+    {
+        job.Status = "failed";
+        job.CompletedAt = DateTime.UtcNow;
+        job.ErrorMessage = $"{ex.GetType().Name}: {ex.Message}";
+        await db.SaveChangesAsync(ct);
+    }
+}

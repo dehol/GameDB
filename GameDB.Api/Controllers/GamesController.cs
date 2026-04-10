@@ -1,0 +1,120 @@
+using GameDB.Core.Interfaces;
+using GameDB.Core.Models;
+using Microsoft.AspNetCore.Authorization;
+using Microsoft.AspNetCore.Mvc;
+using System.Security.Claims;
+
+namespace GameDB.Api.Controllers;
+
+[ApiController]
+[Route("api/[controller]")]
+public class GamesController : ControllerBase
+{
+    private readonly IGameService _games;
+    public GamesController(IGameService games) => _games = games;
+
+    public record CreateGameDto(string Title, string? Description, DateOnly? ReleaseDate, int? DeveloperId, int? PublisherId, List<int> GenreIds);
+    public record UpdateGameDto(string Title, string? Description, DateOnly? ReleaseDate, int? DeveloperId, int? PublisherId, List<int> GenreIds);
+
+    [HttpGet]
+    public async Task<IActionResult> GetAll(
+        [FromQuery] string? search,
+        [FromQuery] int? genreId,
+        [FromQuery] int? shopId,
+        [FromQuery] int page = 1,
+        [FromQuery] int pageSize = 20)
+    {
+        if (page < 1) page = 1;
+        if (pageSize < 1 || pageSize > 100) pageSize = 20;
+
+        var (items, totalCount) = await _games.GetCatalogAsync(search, genreId, shopId, page, pageSize);
+        return Ok(new { items, totalCount, page, pageSize });
+    }
+
+    [HttpGet("{id}")]
+    public async Task<IActionResult> GetById(int id)
+    {
+        var game = await _games.GetByIdAsync(id);
+        if (game == null) return NotFound();
+
+        var dealScores = await _games.GetDealScoresAsync(id);
+
+        return Ok(new
+        {
+            game.GameId,
+            game.Title,
+            game.Description,
+            game.ReleaseDate,
+            Developer = game.Developer?.Name,
+            Publisher = game.Publisher?.Name,
+            Genres = game.GameGenres.Select(gg => gg.Genre.Name).ToList(),
+            Offers = game.Offers.Select(o => new
+            {
+                o.GameOfferId,
+                ShopName = o.Shop.Name,
+                o.CurrentPrice,
+                o.CurrentDiscount,
+                o.Currency,
+                o.DownloadUrl,
+                PriceHistory = o.PriceHistories.Select(ph => new
+                {
+                    ph.RecordedAt,
+                    ph.Price,
+                    ph.DiscountPercent
+                })
+            }),
+            DealScores = dealScores
+        });
+    }
+
+    [HttpGet("{id}/deal-score")]
+    public async Task<IActionResult> GetDealScore(int id)
+    {
+        var scores = await _games.GetDealScoresAsync(id);
+        return Ok(scores);
+    }
+
+    [HttpPost]
+    [Authorize(Roles = "admin")]
+    public async Task<IActionResult> Create(CreateGameDto dto)
+    {
+        var game = new Game
+        {
+            Title = dto.Title,
+            Description = dto.Description,
+            ReleaseDate = dto.ReleaseDate,
+            DeveloperId = dto.DeveloperId,
+            PublisherId = dto.PublisherId
+        };
+
+        var created = await _games.CreateAsync(game, dto.GenreIds);
+        return CreatedAtAction(nameof(GetById), new { id = created.GameId }, new { created.GameId, created.Title });
+    }
+
+    [HttpPut("{id}")]
+    [Authorize(Roles = "admin")]
+    public async Task<IActionResult> Update(int id, UpdateGameDto dto)
+    {
+        var updated = new Game
+        {
+            Title = dto.Title,
+            Description = dto.Description,
+            ReleaseDate = dto.ReleaseDate,
+            DeveloperId = dto.DeveloperId,
+            PublisherId = dto.PublisherId
+        };
+
+        var result = await _games.UpdateAsync(id, updated, dto.GenreIds);
+        if (result == null) return NotFound();
+        return Ok(new { result.GameId, result.Title });
+    }
+
+    [HttpDelete("{id}")]
+    [Authorize(Roles = "admin")]
+    public async Task<IActionResult> Delete(int id)
+    {
+        var deleted = await _games.DeleteAsync(id);
+        if (!deleted) return NotFound();
+        return NoContent();
+    }
+}
