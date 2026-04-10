@@ -30,6 +30,11 @@ public class RawGameData
     public string RawJson { get; set; } = null!;
     
     /// <summary>
+    /// Steam AppId (для швидкого доступу без JSON deserialize)
+    /// </summary>
+    public int? SteamAppId { get; set; }
+    
+    /// <summary>
     /// When this data was fetched from the API
     /// </summary>
     public DateTime FetchedAt { get; set; } = DateTime.UtcNow;
