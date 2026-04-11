@@ -11,6 +11,12 @@ public class Game
     public DateOnly? ReleaseDate { get; set; }
     public int? DeveloperId { get; set; }
     public int? PublisherId { get; set; }
+    
+    /// <summary>
+    /// RAWG API game ID for deduplication
+    /// </summary>
+    public int? RawgId { get; set; }
+    
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
     public DateTime UpdatedAt { get; set; } = DateTime.UtcNow;
     public Developer? Developer { get; set; }

@@ -37,10 +37,8 @@ builder.Services.AddScoped<ProfileService>();
 builder.Services.AddScoped<AlertService>();
 builder.Services.AddScoped<LibraryService>();
 
-// Import pipeline services (concrete classes)
-builder.Services.AddScoped<RawDataCollector>();
-builder.Services.AddScoped<DataStagingService>();
-builder.Services.AddScoped<DataImportService>();
+// Import service (unified)
+builder.Services.AddScoped<GameImportService>();
 
 // Reference Data Cache (scoped for each import operation)
 builder.Services.AddScoped<ReferenceDataCache>();

@@ -9,8 +9,8 @@ using System.Threading.Channels;
 namespace GameDB.Infrastructure.BackgroundServices;
 
 /// <summary>
-/// Background service that processes import pipelines.
-/// Coordinates 3 phases: Collect → Stage → Import
+/// Background service that processes import pipelines
+/// Simplified: uses unified GameImportService instead of 3 separate services
 /// </summary>
 public class GameImportWorker : BackgroundService
 {
@@ -56,9 +56,7 @@ public class GameImportWorker : BackgroundService
     {
         using var scope = _serviceProvider.CreateScope();
         var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
-        var collector = scope.ServiceProvider.GetRequiredService<RawDataCollector>();
-        var stagingService = scope.ServiceProvider.GetRequiredService<DataStagingService>();
-        var importService = scope.ServiceProvider.GetRequiredService<DataImportService>();
+        var importService = scope.ServiceProvider.GetRequiredService<GameImportService>();
 
         var job = await db.ImportJobs.FindAsync(pipelineId, ct);
         if (job == null)
@@ -72,29 +70,8 @@ public class GameImportWorker : BackgroundService
 
         try
         {
-            // Phase 1: Collect raw data
-            await collector.CollectRawDataAsync(job, ct);
-            
-            if (await IsCancelledAsync(job, db, ct))
-            {
-                _logger.LogInformation("Pipeline {PipelineId} cancelled after collection phase", pipelineId);
-                return;
-            }
-
-            // Phase 2: Process to staging
-            await stagingService.ProcessRawDataAsync(job, ct);
-            
-            if (await IsCancelledAsync(job, db, ct))
-            {
-                _logger.LogInformation("Pipeline {PipelineId} cancelled after staging phase", pipelineId);
-                return;
-            }
-
-            // Phase 3: Import to main tables
-            await importService.ImportStagedDataAsync(job, ct);
-
-            // Mark as completed
-            await MarkJobCompletedAsync(job, db, startTime, ct);
+            // Run unified import
+            await importService.RunImportAsync(job, ct);
             
             _logger.LogInformation(
                 "✅ Pipeline {PipelineId} completed in {Duration:mm\\:ss}. " +
@@ -112,23 +89,6 @@ public class GameImportWorker : BackgroundService
             await MarkJobFailedAsync(job, db, ex, ct);
             _logger.LogError(ex, "❌ Pipeline {PipelineId} failed", pipelineId);
         }
-    }
-
-    private static async Task<bool> IsCancelledAsync(ImportJob job, AppDbContext db, CancellationToken ct)
-    {
-        if (ct.IsCancellationRequested)
-            return true;
-
-        await db.Entry(job).ReloadAsync(ct);
-        return job.Status == ImportJobStatus.Cancelled;
-    }
-
-    private static async Task MarkJobCompletedAsync(ImportJob job, AppDbContext db, DateTime startTime, CancellationToken ct)
-    {
-        job.Status = ImportJobStatus.Completed;
-        job.CompletedAt = DateTime.UtcNow;
-        job.CurrentPhase = "completed";
-        await db.SaveChangesAsync(ct);
     }
 
     private static async Task MarkJobCancelledAsync(ImportJob job, AppDbContext db, CancellationToken ct)
