@@ -56,8 +56,8 @@ export default function GameDetailPage() {
     <div>
       <Card>
         <Descriptions title={game.title} bordered column={2}>
-          <Descriptions.Item label="Developer">{game.developer || '—'}</Descriptions.Item>
-          <Descriptions.Item label="Publisher">{game.publisher || '—'}</Descriptions.Item>
+          <Descriptions.Item label="Developer">{game.developer?.name || '—'}</Descriptions.Item>
+          <Descriptions.Item label="Publisher">{game.publisher?.name || '—'}</Descriptions.Item>
           <Descriptions.Item label="Release Date">{game.releaseDate || '—'}</Descriptions.Item>
           <Descriptions.Item label="Genres">
             {(game.genres || []).map(g => <Tag key={g}>{g}</Tag>)}
