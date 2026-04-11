@@ -17,9 +17,13 @@ export function AuthProvider({ children }) {
         } else {
           setUser({
             token,
-            username: decoded.unique_name || decoded.name,
-            role: decoded.role,
-            userId: decoded.nameid,
+            username: decoded["http://schemas.xmlsoap.org/ws/2005/05/identity/claims/name"] 
+                      || decoded.unique_name 
+                      || decoded.name,
+            role: decoded["http://schemas.microsoft.com/ws/2008/06/identity/claims/role"] 
+                  || decoded.role,
+            userId: decoded["http://schemas.xmlsoap.org/ws/2005/05/identity/claims/nameidentifier"] 
+                    || decoded.nameid,
           });
         }
       } catch {
