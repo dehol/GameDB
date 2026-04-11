@@ -67,22 +67,18 @@ public class GameService
             .FirstOrDefaultAsync(g => g.GameId == gameId);
     }
 
+    /// <summary>
+    /// Get deal scores for all offers of a game using single DB function call
+    /// Fixes N+1 query problem
+    /// </summary>
     public async Task<List<DealScoreRow>> GetDealScoresAsync(int gameId)
     {
-        var offerIds = await _db.GameOffers
-            .Where(o => o.GameId == gameId)
-            .Select(o => o.GameOfferId)
+        // Single query - uses fn_get_game_deal_scores function
+        return await _db.Database
+            .SqlQueryRaw<DealScoreRow>(
+                "SELECT * FROM fn_get_game_deal_scores({0})", 
+                gameId)
             .ToListAsync();
-
-        var results = new List<DealScoreRow>();
-        foreach (var id in offerIds)
-        {
-            var rows = await _db.Database
-                .SqlQueryRaw<DealScoreRow>("SELECT * FROM fn_get_deal_score({0})", id)
-                .ToListAsync();
-            results.AddRange(rows);
-        }
-        return results;
     }
 
     public async Task<Game> CreateAsync(Game game, List<int> genreIds)

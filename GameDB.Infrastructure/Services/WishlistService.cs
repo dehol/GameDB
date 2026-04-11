@@ -50,22 +50,44 @@ public class WishlistService
         return true;
     }
 
+    /// <summary>
+    /// Toggle wishlist item using raw SQL (atomic operation)
+    /// </summary>
     public async Task<(bool added, string message)> ToggleAsync(int userId, int gameId)
     {
         if (!await _db.Games.AnyAsync(g => g.GameId == gameId))
             return (false, "Game not found");
 
-        var existing = await _db.Wishlists.FindAsync(userId, gameId);
-        if (existing != null)
+        // Use raw SQL to call the function directly
+        var connection = _db.Database.GetDbConnection();
+        await connection.OpenAsync();
+        
+        try
         {
-            _db.Wishlists.Remove(existing);
-            await _db.SaveChangesAsync();
-            return (false, "Removed from wishlist");
+            using var cmd = connection.CreateCommand();
+            cmd.CommandText = "SELECT fn_toggle_wishlist(@userId, @gameId)";
+            
+            var p1 = cmd.CreateParameter();
+            p1.ParameterName = "userId";
+            p1.Value = userId;
+            cmd.Parameters.Add(p1);
+            
+            var p2 = cmd.CreateParameter();
+            p2.ParameterName = "gameId";
+            p2.Value = gameId;
+            cmd.Parameters.Add(p2);
+            
+            var result = await cmd.ExecuteScalarAsync();
+            var added = (bool)result;
+            
+            return added
+                ? (true, "Added to wishlist")
+                : (false, "Removed from wishlist");
         }
-
-        _db.Wishlists.Add(new Wishlist { UserId = userId, GameId = gameId });
-        await _db.SaveChangesAsync();
-        return (true, "Added to wishlist");
+        finally
+        {
+            await connection.CloseAsync();
+        }
     }
 
     public async Task<(int imported, string? error)> ImportSteamAsync(int userId)
