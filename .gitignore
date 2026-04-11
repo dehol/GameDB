@@ -288,6 +288,9 @@ FodyWeavers.xsd
 *.sln.iml
 .idea/
 
+# Vite cache
+.vite/
+
 # Agents
 .agents/
 
