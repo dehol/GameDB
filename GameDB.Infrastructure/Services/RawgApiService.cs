@@ -71,7 +71,7 @@ public class RawgApiService : IRawgApiService
     private async Task<List<RawgGame>> FetchFullDetailsInParallelAsync(
         List<RawgGame> basicList, ISet<string>? excludeIds, CancellationToken ct)
     {
-        var semaphore = new SemaphoreSlim(4); // оптимальний баланс
+        var semaphore = new SemaphoreSlim(2); // Зменшено з 4 до 2 для стабільності
         var result = new List<RawgGame>(basicList.Count);
 
         var tasks = basicList.Select(async basic =>
@@ -82,6 +82,10 @@ public class RawgApiService : IRawgApiService
                 if (excludeIds?.Contains(basic.Id.ToString()) == true) return;
 
                 var full = await GetGameDetailsAsync(basic.Id);
+                
+                // Throttling delay для уникнення rate limits
+                await Task.Delay(100, ct);
+                
                 result.Add(full ?? basic);
             }
             finally

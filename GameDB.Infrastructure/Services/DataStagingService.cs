@@ -32,6 +32,7 @@ public class DataStagingService : IDataStagingService
         await _db.SaveChangesAsync(ct);
 
         var rawItems = await _db.RawGameData
+            .AsNoTracking() // Оптимізація: read-only query
             .Where(r => !r.Processed)
             .OrderBy(r => r.Source)
             .ThenBy(r => r.FetchedAt)

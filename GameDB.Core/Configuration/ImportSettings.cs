@@ -5,7 +5,7 @@ public class ImportSettings
     /// <summary>
     /// Number of items to process in a single batch
     /// </summary>
-    public int BatchSize { get; set; } = 100;
+    public int BatchSize { get; set; } = 50; // Зменшено зі 100 для кращого балансу пам'яті та продуктивності
     
     /// <summary>
     /// Number of Steam AppIds to fetch in a single API call
@@ -15,17 +15,17 @@ public class ImportSettings
     /// <summary>
     /// Maximum number of concurrent API calls
     /// </summary>
-    public int MaxConcurrentApiCalls { get; set; } = 10;
+    public int MaxConcurrentApiCalls { get; set; } = 2; // Зменшено з 10 для стабільності API
     
     /// <summary>
     /// Maximum number of concurrent data processing operations
     /// </summary>
-    public int MaxConcurrentProcessing { get; set; } = 20;
+    public int MaxConcurrentProcessing { get; set; } = 10; // Зменшено з 20 для стабільності
     
     /// <summary>
     /// Maximum number of concurrent database operations
     /// </summary>
-    public int MaxConcurrentDbOperations { get; set; } = 30;
+    public int MaxConcurrentDbOperations { get; set; } = 15; // Зменшено з 30 для балансу
     
     /// <summary>
     /// Maximum number of retry attempts for failed operations

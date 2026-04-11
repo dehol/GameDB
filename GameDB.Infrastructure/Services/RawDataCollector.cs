@@ -50,6 +50,7 @@ public class RawDataCollector : IRawDataCollector
     private async Task CollectFromRawgAsync(ImportJob job, CancellationToken ct)
     {
         var existingIds = (await _db.RawGameData
+        .AsNoTracking() // Оптимізація: read-only query
         .Where(r => r.Source == "RAWG")
         .Select(r => r.ExternalId)
         .ToListAsync(ct))
@@ -84,6 +85,7 @@ public class RawDataCollector : IRawDataCollector
     private async Task CollectSteamPricesAsync(ImportJob job, CancellationToken ct)
     {
         var steamIds = await _db.RawGameData
+            .AsNoTracking() // Оптимізація: read-only query
             .Where(r => r.Source == "RAWG"
                         && !r.Processed
                         && r.SteamAppId != null)
@@ -97,15 +99,16 @@ public class RawDataCollector : IRawDataCollector
 
         var client = _httpClientFactory.CreateClient();
 
-        var semaphore = new SemaphoreSlim(_settings.MaxConcurrentApiCalls);
+        var semaphore = new SemaphoreSlim(2); // Зменшено concurrency для стабільності
         var results = new ConcurrentBag<RawGameData>();
 
-        var batches = steamIds.Chunk(_settings.SteamBatchSize);
+        var batches = steamIds.Chunk(_settings.SteamBatchSize).ToList();
 
-        await Task.WhenAll(batches.Select(async batch =>
+        // Контрольована обробка batches (не всі одночасно)
+        foreach (var batch in batches)
         {
             await semaphore.WaitAsync(ct);
-
+            
             try
             {
                 var ids = string.Join(",", batch);
@@ -118,7 +121,7 @@ public class RawDataCollector : IRawDataCollector
                 if (!resp.IsSuccessStatusCode)
                 {
                     _logger.LogWarning("Steam API failed for batch: {Batch}", ids);
-                    return;
+                    continue;
                 }
 
                 var json = await resp.Content.ReadAsStringAsync(ct);
@@ -139,7 +142,7 @@ public class RawDataCollector : IRawDataCollector
             {
                 semaphore.Release();
             }
-        }));
+        }
 
         if (results.Count > 0)
         {

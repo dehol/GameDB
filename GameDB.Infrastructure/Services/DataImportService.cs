@@ -38,6 +38,7 @@ public class DataImportService : IDataImportService
         await _cache.PreloadAsync();
 
         var stagedGames = await _db.StagingGames
+            .AsNoTracking() // Оптимізація: read-only query
             .Where(s => !s.IsProcessed)
             .OrderBy(s => s.CreatedAt)
             .ToListAsync(ct);
@@ -62,6 +63,7 @@ public class DataImportService : IDataImportService
                 .ToList();
 
             var existingGames = await _db.Games
+                .AsNoTracking() // Оптимізація: read-only query
                 .Where(g => g.NormalizedTitle != null && normalizedTitles.Contains(g.NormalizedTitle))
                 .ToDictionaryAsync(g => g.NormalizedTitle!, ct);
 
@@ -72,6 +74,7 @@ public class DataImportService : IDataImportService
                 .ToList();
 
             var existingOffers = await _db.GameOffers
+                .AsNoTracking() // Оптимізація: read-only query
                 .Where(o =>
                     (o.ShopId == ShopConstants.Steam ||
                      o.ShopId == ShopConstants.Gog ||
@@ -84,6 +87,7 @@ public class DataImportService : IDataImportService
                 .Distinct()
                 .ToList();
             var existingGenreLinks = await _db.GameGenres
+                .AsNoTracking() // Оптимізація: read-only query
                 .Where(gg => existingGameIds.Contains(gg.GameId))
                 .ToListAsync(ct);
             var gameGenreMap = existingGenreLinks
@@ -116,6 +120,9 @@ public class DataImportService : IDataImportService
             job.TotalGamesCreated += batchGamesCreated;
             job.TotalOffersCreated += batchOffersCreated;
             await _db.SaveChangesAsync(ct);
+            
+            // Очищення ChangeTracker для зменшення пам'яті
+            _db.ChangeTracker.Clear();
 
             if (_settings.EnableDetailedLogging)
             {
