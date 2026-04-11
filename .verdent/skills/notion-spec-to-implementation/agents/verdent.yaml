@@ -1,0 +1,7 @@
+category: Documentation
+interface:
+  display_name: 'Notion Spec to Implementation'
+  short_description: 'Turn Notion specs into implementation plans, tasks, and progress tracking'
+  icon_dark: './assets/icon-dark.png'
+  icon_light: './assets/icon-light.png'
+  default_prompt: 'Turn this Notion spec into an implementation plan with tasks.'

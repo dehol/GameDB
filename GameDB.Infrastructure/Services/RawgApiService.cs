@@ -1,19 +1,22 @@
 using GameDB.Core.Configuration;
 using GameDB.Core.Interfaces;
 using Microsoft.Extensions.Logging;
+using System.Net;
 using System.Text.Json;
 using System.Text.RegularExpressions;
 
 namespace GameDB.Infrastructure.Services;
 
 /// <summary>
-/// RAWG API client – отримує повні метадані гри
+/// RAWG API client – отримує повні метадані гри з retry logic
 /// </summary>
 public class RawgApiService : IRawgApiService
 {
     private readonly HttpClient _httpClient;
     private readonly ILogger<RawgApiService> _logger;
     private readonly RawgSettings _settings;
+    private const int MaxRetries = 3;
+    private const int MaxConcurrency = 10;
 
     public RawgApiService(HttpClient httpClient, ILogger<RawgApiService> logger, RawgSettings settings)
     {
@@ -56,7 +59,9 @@ public class RawgApiService : IRawgApiService
                       $"&dates={Uri.EscapeDataString(dates)}&ordering={ordering}" +
                       $"&page_size={Math.Min(remaining, pageSize)}&page={page}";
 
-            var response = await ExecuteRequestAsync<RawgListResponse<RawgGameResponse>>(url, ct);
+            var response = await ExecuteWithRetryAsync(() => 
+                ExecuteRequestAsync<RawgListResponse<RawgGameResponse>>(url, ct), ct);
+            
             if (response.Results.Count == 0) break;
 
             games.AddRange(response.Results.Select(MapToRawgGame));
@@ -71,8 +76,8 @@ public class RawgApiService : IRawgApiService
     private async Task<List<RawgGame>> FetchFullDetailsInParallelAsync(
         List<RawgGame> basicList, ISet<string>? excludeIds, CancellationToken ct)
     {
-        var semaphore = new SemaphoreSlim(2); // Зменшено з 4 до 2 для стабільності
-        var result = new List<RawgGame>(basicList.Count);
+        var semaphore = new SemaphoreSlim(MaxConcurrency);
+        var result = new System.Collections.Concurrent.ConcurrentBag<RawgGame>();
 
         var tasks = basicList.Select(async basic =>
         {
@@ -81,12 +86,13 @@ public class RawgApiService : IRawgApiService
             {
                 if (excludeIds?.Contains(basic.Id.ToString()) == true) return;
 
-                var full = await GetGameDetailsAsync(basic.Id);
-                
-                // Throttling delay для уникнення rate limits
-                await Task.Delay(100, ct);
-                
+                var full = await GetGameDetailsWithRetryAsync(basic.Id, ct);
                 result.Add(full ?? basic);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning(ex, "Failed to fetch details for game {Id}, using basic data", basic.Id);
+                result.Add(basic);
             }
             finally
             {
@@ -95,7 +101,7 @@ public class RawgApiService : IRawgApiService
         });
 
         await Task.WhenAll(tasks);
-        return result;
+        return result.ToList();
     }
 
     public async Task<RawgGame?> GetGameDetailsAsync(int rawgId)
@@ -112,6 +118,23 @@ public class RawgApiService : IRawgApiService
             return null;
         }
     }
+
+    private async Task<RawgGame?> GetGameDetailsWithRetryAsync(int rawgId, CancellationToken ct)
+    {
+        var url = $"{_settings.ApiBaseUrl}/games/{rawgId}?key={Uri.EscapeDataString(_settings.ApiKey)}";
+        try
+        {
+            var response = await ExecuteWithRetryAsync(() => 
+                ExecuteRequestAsync<RawgGameResponse>(url, ct), ct);
+            return MapToRawgGame(response);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "RAWG details failed after retries for ID {Id}", rawgId);
+            return null;
+        }
+    }
+
     public async Task<List<RawgGame>> SearchGamesAsync(string query, int limit = 500)
     {
         _logger.LogInformation("Searching RAWG for games: {Query}, limit: {Limit}", query, limit);
@@ -127,7 +150,8 @@ public class RawgApiService : IRawgApiService
                       $"&search={Uri.EscapeDataString(query)}" +
                       $"&page_size={pageSize}&page={page}";
 
-            var response = await ExecuteRequestAsync<RawgListResponse<RawgGameResponse>>(url);
+            var response = await ExecuteWithRetryAsync(() => 
+                ExecuteRequestAsync<RawgListResponse<RawgGameResponse>>(url), CancellationToken.None);
             
             if (response.Results.Count == 0)
                 break;
@@ -143,6 +167,7 @@ public class RawgApiService : IRawgApiService
         _logger.LogInformation("Found {Count} games from RAWG search", games.Count);
         return games;
     }
+
     private async Task<T> ExecuteRequestAsync<T>(string url, CancellationToken ct = default)
     {
         var response = await _httpClient.GetAsync(url, ct);
@@ -154,6 +179,31 @@ public class RawgApiService : IRawgApiService
             PropertyNameCaseInsensitive = true,
             PropertyNamingPolicy = JsonNamingPolicy.SnakeCaseLower
         }) ?? throw new InvalidOperationException("Deserialization failed");
+    }
+
+    private async Task<T> ExecuteWithRetryAsync<T>(Func<Task<T>> action, CancellationToken ct = default)
+    {
+        for (int attempt = 0; attempt < MaxRetries; attempt++)
+        {
+            try
+            {
+                return await action();
+            }
+            catch (HttpRequestException ex) when (ex.StatusCode == HttpStatusCode.TooManyRequests && attempt < MaxRetries - 1)
+            {
+                var delay = TimeSpan.FromSeconds(Math.Pow(2, attempt + 1));
+                _logger.LogWarning("Rate limited by RAWG API, retry {Attempt}/{Max} in {Delay}s", 
+                    attempt + 1, MaxRetries, delay.TotalSeconds);
+                await Task.Delay(delay, ct);
+            }
+            catch (HttpRequestException ex) when (ex.StatusCode == HttpStatusCode.TooManyRequests)
+            {
+                _logger.LogError("Rate limited by RAWG API after {Max} retries", MaxRetries);
+                throw;
+            }
+        }
+
+        throw new InvalidOperationException("Should not reach here");
     }
 
     private RawgGame MapToRawgGame(RawgGameResponse r)

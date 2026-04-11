@@ -1,0 +1,7 @@
+category: Documentation
+interface:
+  display_name: 'Notion Research Documentation'
+  short_description: 'Research Notion content and produce briefs/reports'
+  icon_dark: './assets/icon-dark.png'
+  icon_light: './assets/icon-light.png'
+  default_prompt: 'Research Notion content and produce a brief or report.'

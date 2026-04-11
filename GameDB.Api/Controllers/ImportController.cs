@@ -1,4 +1,5 @@
 using GameDB.Core.Interfaces;
+using GameDB.Core.Models;
 using GameDB.Infrastructure;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
@@ -137,9 +138,9 @@ public class ImportController : ControllerBase
         var query = _db.ImportJobs.AsQueryable();
 
         // Apply status filter
-        if (!string.IsNullOrEmpty(status))
+        if (!string.IsNullOrEmpty(status) && Enum.TryParse<ImportJobStatus>(status, ignoreCase: true, out var statusEnum))
         {
-            query = query.Where(j => j.Status.ToLower() == status.ToLower());
+            query = query.Where(j => j.Status == statusEnum);
         }
 
         // Get total count
@@ -153,10 +154,10 @@ public class ImportController : ControllerBase
             .Select(j => new
             {
                 j.ImportJobId,
-                j.Status,
+                Status = j.Status.ToString().ToLowerInvariant(),
                 j.CurrentPhase,
                 j.IsSteamCatalogImport,
-                totalGames = j.SteamTotal, // IGDB count for full imports
+                totalGames = j.SteamTotal,
                 processedGames = j.SteamProcessed,
                 j.TotalGamesCreated,
                 j.TotalOffersCreated,
@@ -189,7 +190,7 @@ public class ImportController : ControllerBase
     public async Task<IActionResult> GetLatest()
     {
         var latestJob = await _db.ImportJobs
-            .Where(j => j.Status == "completed")
+            .Where(j => j.Status == ImportJobStatus.Completed)
             .OrderByDescending(j => j.CompletedAt)
             .FirstOrDefaultAsync();
 
@@ -215,17 +216,17 @@ public class ImportController : ControllerBase
     public async Task<IActionResult> GetStats()
     {
         var totalImports = await _db.ImportJobs.CountAsync();
-        var successfulImports = await _db.ImportJobs.CountAsync(j => j.Status == "completed");
-        var failedImports = await _db.ImportJobs.CountAsync(j => j.Status == "failed");
+        var successfulImports = await _db.ImportJobs.CountAsync(j => j.Status == ImportJobStatus.Completed);
+        var failedImports = await _db.ImportJobs.CountAsync(j => j.Status == ImportJobStatus.Failed);
         var totalGamesImported = await _db.ImportJobs
-            .Where(j => j.Status == "completed")
+            .Where(j => j.Status == ImportJobStatus.Completed)
             .SumAsync(j => j.TotalGamesCreated);
         var totalOffersCreated = await _db.ImportJobs
-            .Where(j => j.Status == "completed")
+            .Where(j => j.Status == ImportJobStatus.Completed)
             .SumAsync(j => j.TotalOffersCreated);
 
         var lastImport = await _db.ImportJobs
-            .Where(j => j.Status == "completed")
+            .Where(j => j.Status == ImportJobStatus.Completed)
             .OrderByDescending(j => j.CompletedAt)
             .FirstOrDefaultAsync();
 

@@ -7,6 +7,7 @@ namespace GameDB.Infrastructure.Caching;
 
 /// <summary>
 /// Thread-safe cache for reference data (developers, publishers, genres)
+/// Without reflection - explicit methods for each entity type
 /// </summary>
 public class ReferenceDataCache
 {
@@ -15,7 +16,9 @@ public class ReferenceDataCache
     private readonly ConcurrentDictionary<string, int> _developers = new();
     private readonly ConcurrentDictionary<string, int> _publishers = new();
     private readonly ConcurrentDictionary<string, int> _genres = new();
-    private readonly SemaphoreSlim _lock = new(1, 1);
+    private readonly SemaphoreSlim _developerLock = new(1, 1);
+    private readonly SemaphoreSlim _publisherLock = new(1, 1);
+    private readonly SemaphoreSlim _genreLock = new(1, 1);
 
     public ReferenceDataCache(AppDbContext db, ILogger<ReferenceDataCache> logger)
     {
@@ -23,83 +26,122 @@ public class ReferenceDataCache
         _logger = logger;
     }
 
-    public Task<int?> GetOrCreateDeveloperIdAsync(string? name) =>
-        GetOrCreateReferenceIdAsync(name, _developers, () => _db.Developers, "developer");
+    public async Task<int?> GetOrCreateDeveloperIdAsync(string? name)
+    {
+        if (string.IsNullOrWhiteSpace(name)) return null;
 
-    public Task<int?> GetOrCreatePublisherIdAsync(string? name) =>
-        GetOrCreateReferenceIdAsync(name, _publishers, () => _db.Publishers, "publisher");
+        // Fast path: check cache without lock
+        if (_developers.TryGetValue(name, out var cachedId))
+            return cachedId;
+
+        await _developerLock.WaitAsync();
+        try
+        {
+            // Double-check after acquiring lock
+            if (_developers.TryGetValue(name, out cachedId))
+                return cachedId;
+
+            var existing = await _db.Developers
+                .FirstOrDefaultAsync(d => d.Name == name);
+
+            if (existing != null)
+            {
+                _developers[name] = existing.DeveloperId;
+                _logger.LogDebug("Cached existing developer: {Name} (ID: {Id})", name, existing.DeveloperId);
+                return existing.DeveloperId;
+            }
+
+            var newDeveloper = new Developer { Name = name };
+            _db.Developers.Add(newDeveloper);
+            await _db.SaveChangesAsync();
+
+            _developers[name] = newDeveloper.DeveloperId;
+            _logger.LogInformation("Created new developer: {Name} (ID: {Id})", name, newDeveloper.DeveloperId);
+            return newDeveloper.DeveloperId;
+        }
+        finally
+        {
+            _developerLock.Release();
+        }
+    }
+
+    public async Task<int?> GetOrCreatePublisherIdAsync(string? name)
+    {
+        if (string.IsNullOrWhiteSpace(name)) return null;
+
+        // Fast path: check cache without lock
+        if (_publishers.TryGetValue(name, out var cachedId))
+            return cachedId;
+
+        await _publisherLock.WaitAsync();
+        try
+        {
+            // Double-check after acquiring lock
+            if (_publishers.TryGetValue(name, out cachedId))
+                return cachedId;
+
+            var existing = await _db.Publishers
+                .FirstOrDefaultAsync(p => p.Name == name);
+
+            if (existing != null)
+            {
+                _publishers[name] = existing.PublisherId;
+                _logger.LogDebug("Cached existing publisher: {Name} (ID: {Id})", name, existing.PublisherId);
+                return existing.PublisherId;
+            }
+
+            var newPublisher = new Publisher { Name = name };
+            _db.Publishers.Add(newPublisher);
+            await _db.SaveChangesAsync();
+
+            _publishers[name] = newPublisher.PublisherId;
+            _logger.LogInformation("Created new publisher: {Name} (ID: {Id})", name, newPublisher.PublisherId);
+            return newPublisher.PublisherId;
+        }
+        finally
+        {
+            _publisherLock.Release();
+        }
+    }
 
     public async Task<int> GetOrCreateGenreIdAsync(string name)
     {
         if (string.IsNullOrWhiteSpace(name))
             throw new ArgumentException("Genre name cannot be null or empty", nameof(name));
-        
-        return await GetOrCreateReferenceIdAsync(name, _genres, () => _db.Genres, "genre") ?? 
-            throw new InvalidOperationException($"Failed to create or find genre: {name}");
-    }
-
-    private async Task<int?> GetOrCreateReferenceIdAsync<TEntity>(
-        string? name,
-        ConcurrentDictionary<string, int> cache,
-        Func<DbSet<TEntity>> dbSetGetter,
-        string entityType) where TEntity : class, new()
-    {
-        if (string.IsNullOrWhiteSpace(name)) return null;
 
         // Fast path: check cache without lock
-        if (cache.TryGetValue(name, out var cachedId))
+        if (_genres.TryGetValue(name, out var cachedId))
             return cachedId;
 
-        await _lock.WaitAsync();
+        await _genreLock.WaitAsync();
         try
         {
             // Double-check after acquiring lock
-            if (cache.TryGetValue(name, out cachedId))
+            if (_genres.TryGetValue(name, out cachedId))
                 return cachedId;
 
-            var dbSet = dbSetGetter();
-            
-            // Use reflection to find entity by Name property
-            var existing = await dbSet
-                .FirstOrDefaultAsync(e => EF.Property<string>(e, "Name") == name);
+            var existing = await _db.Genres
+                .FirstOrDefaultAsync(g => g.Name == name);
 
             if (existing != null)
             {
-                var id = GetEntityId(existing, entityType);
-                cache[name] = id;
-                _logger.LogDebug("Cached existing {Type}: {Name} (ID: {Id})", entityType, name, id);
-                return id;
+                _genres[name] = existing.GenreId;
+                _logger.LogDebug("Cached existing genre: {Name} (ID: {Id})", name, existing.GenreId);
+                return existing.GenreId;
             }
 
-            // Create new entity using reflection
-            var newEntity = new TEntity();
-            typeof(TEntity).GetProperty("Name")?.SetValue(newEntity, name);
-            
-            dbSet.Add(newEntity);
+            var newGenre = new Genre { Name = name };
+            _db.Genres.Add(newGenre);
             await _db.SaveChangesAsync();
 
-            var newId = GetEntityId(newEntity, entityType);
-            cache[name] = newId;
-            _logger.LogInformation("Created new {Type}: {Name} (ID: {Id})", entityType, name, newId);
-            return newId;
+            _genres[name] = newGenre.GenreId;
+            _logger.LogInformation("Created new genre: {Name} (ID: {Id})", name, newGenre.GenreId);
+            return newGenre.GenreId;
         }
         finally
         {
-            _lock.Release();
+            _genreLock.Release();
         }
-    }
-
-    private static int GetEntityId<TEntity>(TEntity entity, string entityType) where TEntity : class
-    {
-        var idPropertyName = $"{entityType}Id";
-        var idProperty = typeof(TEntity).GetProperty(idPropertyName);
-        if (idProperty?.GetValue(entity) is int id)
-        {
-            return id;
-        }
-
-        throw new InvalidOperationException(
-            $"Unable to read primary key '{idPropertyName}' from {typeof(TEntity).Name}.");
     }
 
     public void Clear()

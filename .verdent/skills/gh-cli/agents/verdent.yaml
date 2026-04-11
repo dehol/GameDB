@@ -1,0 +1,12 @@
+category: Development
+interface:
+  display_name: GitHub CLI
+  short_description: Comprehensive GitHub CLI (gh) command reference.
+  icon_dark: './assets/icon-dark.png'
+  icon_light: './assets/icon-light.png'
+  default_prompt: Help me use the GitHub CLI.
+  label:
+    - github
+    - cli
+    - git
+    - collaboration

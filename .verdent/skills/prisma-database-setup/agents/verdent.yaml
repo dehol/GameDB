@@ -1,0 +1,11 @@
+category: Backend
+interface:
+  display_name: Prisma Database Setup
+  short_description: Set up and configure Prisma ORM with any database.
+  icon_dark: './assets/icon-dark.png'
+  icon_light: './assets/icon-light.png'
+  default_prompt: Help me set up Prisma with my database.
+  label:
+    - database
+    - orm
+    - backend

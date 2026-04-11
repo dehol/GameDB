@@ -32,7 +32,7 @@ public class RawDataCollector : IRawDataCollector
 
     public async Task CollectRawDataAsync(ImportJob job, CancellationToken ct)
     {
-        job.Status = "running";
+        job.Status = ImportJobStatus.Running;
         job.CurrentPhase = "collecting_rawg";
         await _db.SaveChangesAsync(ct);
 
@@ -42,9 +42,6 @@ public class RawDataCollector : IRawDataCollector
         await _db.SaveChangesAsync(ct);
 
         await CollectSteamPricesAsync(job, ct);
-
-        job.Status = "completed";
-        await _db.SaveChangesAsync(ct);
     }
 
     private async Task CollectFromRawgAsync(ImportJob job, CancellationToken ct)

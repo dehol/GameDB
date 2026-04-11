@@ -6,8 +6,14 @@ public class ImportJob
 {
     [Key]
     public int ImportJobId { get; set; }
-    public string Status { get; set; } = "pending"; // pending, running, completed, failed
+    
+    /// <summary>
+    /// Current status of the import job
+    /// </summary>
+    public ImportJobStatus Status { get; set; } = ImportJobStatus.Pending;
+    
     public string? CurrentPhase { get; set; }
+    
     /// <summary>True when job was started from Steam catalog import (not full bulk import).</summary>
     public bool IsSteamCatalogImport { get; set; }
     

@@ -1,0 +1,12 @@
+category: Backend
+interface:
+  display_name: Supabase Postgres
+  short_description: Optimize Postgres queries and schema with Supabase best practices.
+  icon_dark: './assets/icon-dark.png'
+  icon_light: './assets/icon-light.png'
+  default_prompt: Help me optimize my Postgres database.
+  label:
+    - postgres
+    - database
+    - supabase
+    - performance

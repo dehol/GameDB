@@ -12,39 +12,41 @@ public class GameService : IGameService
     public async Task<(List<GameCatalogRow> items, int totalCount)> GetCatalogAsync(
         string? search, int? genreId, int? shopId, int page, int pageSize)
     {
+        // Base query from view - EF Core 7+ allows composing LINQ over raw SQL
         var query = _db.Database
             .SqlQueryRaw<GameCatalogRow>("SELECT * FROM vw_game_catalog")
             .AsNoTracking();
 
-        var all = await query.ToListAsync();
-
-        IEnumerable<GameCatalogRow> filtered = all;
-
+        // Database-side filtering
         if (!string.IsNullOrWhiteSpace(search))
-            filtered = filtered.Where(g => g.Title.Contains(search, StringComparison.OrdinalIgnoreCase));
+            query = query.Where(g => g.Title.Contains(search));
 
         if (genreId.HasValue)
         {
-            var gameIds = await _db.GameGenres
+            var gameIds = _db.GameGenres
                 .Where(gg => gg.GenreId == genreId.Value)
-                .Select(gg => gg.GameId)
-                .ToListAsync();
-            filtered = filtered.Where(g => gameIds.Contains(g.GameId));
+                .Select(gg => gg.GameId);
+            query = query.Where(g => gameIds.Contains(g.GameId));
         }
 
         if (shopId.HasValue)
         {
-            var gameIds = await _db.GameOffers
+            var gameIds = _db.GameOffers
                 .Where(o => o.ShopId == shopId.Value)
                 .Select(o => o.GameId)
-                .Distinct()
-                .ToListAsync();
-            filtered = filtered.Where(g => gameIds.Contains(g.GameId));
+                .Distinct();
+            query = query.Where(g => gameIds.Contains(g.GameId));
         }
 
-        var list = filtered.ToList();
-        var totalCount = list.Count;
-        var items = list.Skip((page - 1) * pageSize).Take(pageSize).ToList();
+        // Count before pagination
+        var totalCount = await query.CountAsync();
+
+        // Apply pagination at database level
+        var items = await query
+            .OrderByDescending(g => g.UpdatedAt)
+            .Skip((page - 1) * pageSize)
+            .Take(pageSize)
+            .ToListAsync();
 
         return (items, totalCount);
     }

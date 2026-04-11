@@ -24,7 +24,7 @@ public class ImportWorkerHealthCheck : IHealthCheck
         {
             // Check for stuck jobs (running longer than timeout)
             var stuckJobs = await _db.ImportJobs
-                .Where(j => j.Status == "running" &&
+                .Where(j => j.Status == ImportJobStatus.Running &&
                             j.StartedAt < DateTime.UtcNow.AddMinutes(-_settings.JobTimeoutMinutes))
                 .CountAsync(cancellationToken);
 
@@ -42,7 +42,7 @@ public class ImportWorkerHealthCheck : IHealthCheck
 
             // Check for failed jobs in last hour
             var recentFailures = await _db.ImportJobs
-                .Where(j => j.Status == "failed" &&
+                .Where(j => j.Status == ImportJobStatus.Failed &&
                             j.StartedAt > DateTime.UtcNow.AddHours(-1))
                 .CountAsync(cancellationToken);
 
@@ -57,7 +57,7 @@ public class ImportWorkerHealthCheck : IHealthCheck
                     });
             }
 
-            // Check for high errorCount in recent jobs
+            // Check for high ErrorCount in recent jobs
             var recentJobs = await _db.ImportJobs
                 .Where(j => j.StartedAt > DateTime.UtcNow.AddHours(-2))
                 .ToListAsync(cancellationToken);
@@ -83,10 +83,10 @@ public class ImportWorkerHealthCheck : IHealthCheck
 
             // Get current status
             var runningJobs = await _db.ImportJobs
-                .CountAsync(j => j.Status == "running", cancellationToken);
+                .CountAsync(j => j.Status == ImportJobStatus.Running, cancellationToken);
 
             var pendingJobs = await _db.ImportJobs
-                .CountAsync(j => j.Status == "pending", cancellationToken);
+                .CountAsync(j => j.Status == ImportJobStatus.Pending, cancellationToken);
 
             return HealthCheckResult.Healthy(
                 $"Import worker is operating normally. Running: {runningJobs}, Pending: {pendingJobs}",

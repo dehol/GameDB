@@ -46,7 +46,7 @@ public class ImportPipelineService : IPipelineService
         // Create new job record
         var job = new ImportJob
         {
-            Status = "pending",
+            Status = ImportJobStatus.Pending,
             CurrentPhase = "initializing",
             StartedAt = DateTime.UtcNow,
             IsSteamCatalogImport = false
@@ -61,7 +61,7 @@ public class ImportPipelineService : IPipelineService
         // Send to channel for processing
         if (!_pipelineChannel.Writer.TryWrite(pipelineId))
         {
-            job.Status = "failed";
+            job.Status = ImportJobStatus.Failed;
             job.ErrorMessage = "Pipeline channel is not available";
             job.CompletedAt = DateTime.UtcNow;
             await db.SaveChangesAsync();
@@ -83,7 +83,7 @@ public class ImportPipelineService : IPipelineService
 
         return new PipelineStatus(
             PipelineId: job.ImportJobId,
-            Status: job.Status,
+            Status: job.Status.ToString().ToLowerInvariant(),
             Phase: job.CurrentPhase,
             TotalGames: job.SteamTotal,
             ProcessedGames: job.SteamProcessed,
@@ -107,14 +107,14 @@ public class ImportPipelineService : IPipelineService
             return;
         }
 
-        if (job.Status != "running" && job.Status != "pending")
+        if (job.Status != ImportJobStatus.Running && job.Status != ImportJobStatus.Pending)
         {
             _logger.LogWarning("Cannot cancel pipeline {PipelineId}: status is {Status}", 
                 pipelineId, job.Status);
             return;
         }
 
-        job.Status = "cancelled";
+        job.Status = ImportJobStatus.Cancelled;
         job.CompletedAt = DateTime.UtcNow;
         job.ErrorMessage = "Cancelled by user";
         await db.SaveChangesAsync();
@@ -126,7 +126,7 @@ public class ImportPipelineService : IPipelineService
     {
         using var scope = _serviceProvider.CreateScope();
         var db = GetDb(scope);
-        return await db.ImportJobs.AnyAsync(j => j.Status == "running" || j.Status == "pending");
+        return await db.ImportJobs.AnyAsync(j => j.Status == ImportJobStatus.Running || j.Status == ImportJobStatus.Pending);
     }
 
     public async Task<int?> GetRunningPipelineIdAsync()
@@ -143,7 +143,7 @@ public class ImportPipelineService : IPipelineService
 
     private static Task<ImportJob?> GetRunningJobAsync(AppDbContext db) =>
         db.ImportJobs
-            .Where(j => j.Status == "running" || j.Status == "pending")
+            .Where(j => j.Status == ImportJobStatus.Running || j.Status == ImportJobStatus.Pending)
             .OrderByDescending(j => j.StartedAt)
             .FirstOrDefaultAsync();
 }
