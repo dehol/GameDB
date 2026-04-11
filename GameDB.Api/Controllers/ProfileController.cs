@@ -1,4 +1,4 @@
-using GameDB.Core.Interfaces;
+using GameDB.Infrastructure.Services;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using System.Security.Claims;
@@ -10,8 +10,8 @@ namespace GameDB.Api.Controllers;
 [Authorize]
 public class ProfileController : ControllerBase
 {
-    private readonly IProfileService _profile;
-    public ProfileController(IProfileService profile) => _profile = profile;
+    private readonly ProfileService _profile;
+    public ProfileController(ProfileService profile) => _profile = profile;
 
     private int GetUserId() => int.Parse(User.FindFirstValue(ClaimTypes.NameIdentifier)!);
 

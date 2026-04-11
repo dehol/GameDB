@@ -1,5 +1,4 @@
-﻿using GameDB.Core.Interfaces;
-using GameDB.Core.Models;
+﻿using GameDB.Core.Models;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using Microsoft.IdentityModel.Tokens;
@@ -9,7 +8,7 @@ using System.Text;
 
 namespace GameDB.Infrastructure.Services;
 
-public class AuthService : IAuthService
+public class AuthService
 {
     private readonly AppDbContext _db;
     private readonly IConfiguration _config;

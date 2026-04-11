@@ -1,4 +1,4 @@
-using GameDB.Core.Interfaces;
+using GameDB.Infrastructure.Services;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using System.Security.Claims;
@@ -10,8 +10,8 @@ namespace GameDB.Api.Controllers;
 [Authorize]
 public class LibraryController : ControllerBase
 {
-    private readonly ILibraryService _library;
-    public LibraryController(ILibraryService library) => _library = library;
+    private readonly LibraryService _library;
+    public LibraryController(LibraryService library) => _library = library;
 
     private int GetUserId() => int.Parse(User.FindFirstValue(ClaimTypes.NameIdentifier)!);
 

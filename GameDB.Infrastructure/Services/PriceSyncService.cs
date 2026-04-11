@@ -1,4 +1,4 @@
-using GameDB.Core.Interfaces;
+using GameDB.Core.DTOs;
 using GameDB.Core.Models;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
@@ -6,7 +6,7 @@ using System.Text.Json;
 
 namespace GameDB.Infrastructure.Services;
 
-public class PriceSyncService : IPriceSyncService
+public class PriceSyncService
 {
     private readonly AppDbContext _db;
     private readonly IHttpClientFactory _httpFactory;

@@ -1,10 +1,10 @@
-using GameDB.Core.Interfaces;
+using GameDB.Core.DTOs;
 using GameDB.Core.Models;
 using Microsoft.EntityFrameworkCore;
 
 namespace GameDB.Infrastructure.Services;
 
-public class GameService : IGameService
+public class GameService
 {
     private readonly AppDbContext _db;
     public GameService(AppDbContext db) => _db = db;

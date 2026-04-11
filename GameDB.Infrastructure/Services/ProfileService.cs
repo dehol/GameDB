@@ -1,10 +1,9 @@
-using GameDB.Core.Interfaces;
 using GameDB.Core.Models;
 using Microsoft.EntityFrameworkCore;
 
 namespace GameDB.Infrastructure.Services;
 
-public class ProfileService : IProfileService
+public class ProfileService
 {
     private readonly AppDbContext _db;
     public ProfileService(AppDbContext db) => _db = db;

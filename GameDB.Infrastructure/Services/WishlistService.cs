@@ -1,10 +1,10 @@
-using GameDB.Core.Interfaces;
+using GameDB.Core.DTOs;
 using GameDB.Core.Models;
 using Microsoft.EntityFrameworkCore;
 
 namespace GameDB.Infrastructure.Services;
 
-public class WishlistService : IWishlistService
+public class WishlistService
 {
     private readonly AppDbContext _db;
     private readonly IHttpClientFactory _httpFactory;

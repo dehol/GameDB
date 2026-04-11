@@ -1,11 +1,11 @@
-using GameDB.Core.Interfaces;
+using GameDB.Core.DTOs;
 using GameDB.Core.Models;
 using Microsoft.EntityFrameworkCore;
 using Npgsql;
 
 namespace GameDB.Infrastructure.Services;
 
-public class AlertService : IAlertService
+public class AlertService
 {
     private readonly AppDbContext _db;
     public AlertService(AppDbContext db) => _db = db;

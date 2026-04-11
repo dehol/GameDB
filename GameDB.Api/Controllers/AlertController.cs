@@ -1,4 +1,4 @@
-using GameDB.Core.Interfaces;
+using GameDB.Infrastructure.Services;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using System.Security.Claims;
@@ -10,8 +10,8 @@ namespace GameDB.Api.Controllers;
 [Authorize]
 public class AlertController : ControllerBase
 {
-    private readonly IAlertService _alerts;
-    public AlertController(IAlertService alerts) => _alerts = alerts;
+    private readonly AlertService _alerts;
+    public AlertController(AlertService alerts) => _alerts = alerts;
 
     private int GetUserId() => int.Parse(User.FindFirstValue(ClaimTypes.NameIdentifier)!);
 

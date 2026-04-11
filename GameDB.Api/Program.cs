@@ -28,24 +28,24 @@ builder.Services.AddSingleton(sp =>
 builder.Services.AddSingleton(sp => 
     sp.GetRequiredService<Microsoft.Extensions.Options.IOptions<RawgSettings>>().Value);
 
-// Services
-builder.Services.AddScoped<IAuthService, AuthService>();
-builder.Services.AddScoped<IGameService, GameService>();
-builder.Services.AddScoped<IWishlistService, WishlistService>();
-builder.Services.AddScoped<IPriceSyncService, PriceSyncService>();
-builder.Services.AddScoped<IProfileService, ProfileService>();
-builder.Services.AddScoped<IAlertService, AlertService>();
-builder.Services.AddScoped<ILibraryService, LibraryService>();
+// Services (using concrete classes, not interfaces)
+builder.Services.AddScoped<AuthService>();
+builder.Services.AddScoped<GameService>();
+builder.Services.AddScoped<WishlistService>();
+builder.Services.AddScoped<PriceSyncService>();
+builder.Services.AddScoped<ProfileService>();
+builder.Services.AddScoped<AlertService>();
+builder.Services.AddScoped<LibraryService>();
 
-// Import pipeline services
-builder.Services.AddScoped<IRawDataCollector, RawDataCollector>();
-builder.Services.AddScoped<IDataStagingService, DataStagingService>();
-builder.Services.AddScoped<IDataImportService, DataImportService>();
+// Import pipeline services (concrete classes)
+builder.Services.AddScoped<RawDataCollector>();
+builder.Services.AddScoped<DataStagingService>();
+builder.Services.AddScoped<DataImportService>();
 
 // Reference Data Cache (scoped for each import operation)
 builder.Services.AddScoped<ReferenceDataCache>();
 
-// Pipeline Service (singleton for channel)
+// Pipeline Service (singleton for channel) - keep interface for singleton pattern
 builder.Services.AddSingleton<Channel<int>>(sp => 
     Channel.CreateBounded<int>(new BoundedChannelOptions(1)
     {
@@ -56,13 +56,12 @@ builder.Services.AddSingleton<IPipelineService, ImportPipelineService>();
 // Background Service for Import Pipeline
 builder.Services.AddHostedService<GameImportWorker>();
 
+// RAWG API Client (keep interface for HTTP client factory pattern)
 builder.Services.AddHttpClient<RawgApiService>(client =>
 {
     client.DefaultRequestHeaders.Add("User-Agent", "GameDB/1.0");
     client.Timeout = TimeSpan.FromSeconds(60);
 });
-
-// Register IRawgApiService
 builder.Services.AddScoped<IRawgApiService>(sp => sp.GetRequiredService<RawgApiService>());
 
 // JWT Auth

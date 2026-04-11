@@ -10,7 +10,7 @@ namespace GameDB.Infrastructure.Services;
 /// <summary>
 /// Processes raw data from RawGameData table into StagingGame table
 /// </summary>
-public class DataStagingService : IDataStagingService
+public class DataStagingService
 {
     private readonly AppDbContext _db;
     private readonly ILogger<DataStagingService> _logger;

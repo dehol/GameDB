@@ -1,4 +1,4 @@
-﻿using GameDB.Core.Interfaces;
+using GameDB.Infrastructure.Services;
 using Microsoft.AspNetCore.Mvc;
 
 namespace GameDB.Api.Controllers;
@@ -7,8 +7,8 @@ namespace GameDB.Api.Controllers;
 [Route("api/[controller]")]
 public class AuthController : ControllerBase
 {
-    private readonly IAuthService _auth;
-    public AuthController(IAuthService auth) => _auth = auth;
+    private readonly AuthService _auth;
+    public AuthController(AuthService auth) => _auth = auth;
 
     public record RegisterDto(string Username, string Email, string Password);
     public record LoginDto(string Email, string Password);

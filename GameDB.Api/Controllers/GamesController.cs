@@ -1,8 +1,7 @@
-using GameDB.Core.Interfaces;
 using GameDB.Core.Models;
+using GameDB.Infrastructure.Services;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
-using System.Security.Claims;
 
 namespace GameDB.Api.Controllers;
 
@@ -10,8 +9,8 @@ namespace GameDB.Api.Controllers;
 [Route("api/[controller]")]
 public class GamesController : ControllerBase
 {
-    private readonly IGameService _games;
-    public GamesController(IGameService games) => _games = games;
+    private readonly GameService _games;
+    public GamesController(GameService games) => _games = games;
 
     public record CreateGameDto(string Title, string? Description, DateOnly? ReleaseDate, int? DeveloperId, int? PublisherId, List<int> GenreIds);
     public record UpdateGameDto(string Title, string? Description, DateOnly? ReleaseDate, int? DeveloperId, int? PublisherId, List<int> GenreIds);
@@ -36,35 +35,7 @@ public class GamesController : ControllerBase
     {
         var game = await _games.GetByIdAsync(id);
         if (game == null) return NotFound();
-
-        var dealScores = await _games.GetDealScoresAsync(id);
-
-        return Ok(new
-        {
-            game.GameId,
-            game.Title,
-            game.Description,
-            game.ReleaseDate,
-            Developer = game.Developer?.Name,
-            Publisher = game.Publisher?.Name,
-            Genres = game.GameGenres.Select(gg => gg.Genre.Name).ToList(),
-            Offers = game.Offers.Select(o => new
-            {
-                o.GameOfferId,
-                ShopName = o.Shop.Name,
-                o.CurrentPrice,
-                o.CurrentDiscount,
-                o.Currency,
-                o.DownloadUrl,
-                PriceHistory = o.PriceHistories.Select(ph => new
-                {
-                    ph.RecordedAt,
-                    ph.Price,
-                    ph.DiscountPercent
-                })
-            }),
-            DealScores = dealScores
-        });
+        return Ok(game);
     }
 
     [HttpGet("{id}/deal-score")]

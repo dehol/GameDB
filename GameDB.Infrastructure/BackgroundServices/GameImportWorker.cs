@@ -1,5 +1,6 @@
-using GameDB.Core.Interfaces;
 using GameDB.Core.Models;
+using GameDB.Infrastructure;
+using GameDB.Infrastructure.Services;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
@@ -55,9 +56,9 @@ public class GameImportWorker : BackgroundService
     {
         using var scope = _serviceProvider.CreateScope();
         var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
-        var collector = scope.ServiceProvider.GetRequiredService<IRawDataCollector>();
-        var stagingService = scope.ServiceProvider.GetRequiredService<IDataStagingService>();
-        var importService = scope.ServiceProvider.GetRequiredService<IDataImportService>();
+        var collector = scope.ServiceProvider.GetRequiredService<RawDataCollector>();
+        var stagingService = scope.ServiceProvider.GetRequiredService<DataStagingService>();
+        var importService = scope.ServiceProvider.GetRequiredService<DataImportService>();
 
         var job = await db.ImportJobs.FindAsync(pipelineId, ct);
         if (job == null)

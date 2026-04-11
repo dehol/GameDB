@@ -1,10 +1,10 @@
-using GameDB.Core.Interfaces;
+using GameDB.Core.DTOs;
 using Microsoft.EntityFrameworkCore;
 using Npgsql;
 
 namespace GameDB.Infrastructure.Services;
 
-public class LibraryService : ILibraryService
+public class LibraryService
 {
     private readonly AppDbContext _db;
     public LibraryService(AppDbContext db) => _db = db;

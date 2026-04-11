@@ -1,4 +1,4 @@
-using GameDB.Core.Interfaces;
+using GameDB.Infrastructure.Services;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 
@@ -9,8 +9,8 @@ namespace GameDB.Api.Controllers;
 [Authorize(Roles = "admin")]
 public class SyncController : ControllerBase
 {
-    private readonly IPriceSyncService _sync;
-    public SyncController(IPriceSyncService sync) => _sync = sync;
+    private readonly PriceSyncService _sync;
+    public SyncController(PriceSyncService sync) => _sync = sync;
 
     [HttpPost("steam")]
     public async Task<IActionResult> SyncSteam()

@@ -8,7 +8,7 @@ using System.Text.Json;
 
 namespace GameDB.Infrastructure.Services;
 
-public class RawDataCollector : IRawDataCollector
+public class RawDataCollector
 {
     private readonly AppDbContext _db;
     private readonly IRawgApiService _rawgApi;

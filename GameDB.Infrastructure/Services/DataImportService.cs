@@ -1,7 +1,6 @@
 using EFCore.BulkExtensions;
 using GameDB.Core.Configuration;
 using GameDB.Core.Constants;
-using GameDB.Core.Interfaces;
 using GameDB.Core.Models;
 using GameDB.Infrastructure.Caching;
 using Microsoft.EntityFrameworkCore;
@@ -12,7 +11,7 @@ namespace GameDB.Infrastructure.Services;
 /// <summary>
 /// Imports data from StagingGame table into main Game/GameOffer tables using bulk operations
 /// </summary>
-public class DataImportService : IDataImportService
+public class DataImportService
 {
     private readonly AppDbContext _db;
     private readonly ReferenceDataCache _cache;

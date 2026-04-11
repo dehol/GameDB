@@ -1,4 +1,4 @@
-using GameDB.Core.Interfaces;
+using GameDB.Infrastructure.Services;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using System.Security.Claims;
@@ -10,8 +10,8 @@ namespace GameDB.Api.Controllers;
 [Authorize]
 public class WishlistController : ControllerBase
 {
-    private readonly IWishlistService _wishlist;
-    public WishlistController(IWishlistService wishlist) => _wishlist = wishlist;
+    private readonly WishlistService _wishlist;
+    public WishlistController(WishlistService wishlist) => _wishlist = wishlist;
 
     private int GetUserId() => int.Parse(User.FindFirstValue(ClaimTypes.NameIdentifier)!);
 
