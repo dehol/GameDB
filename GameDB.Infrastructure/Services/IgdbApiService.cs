@@ -97,9 +97,6 @@ public class IgdbApiService : IIgdbApiService
         }
 
         _logger.LogInformation("📥 IGDB: {Count} PC games with store links fetched", result.Count);
-        if (maxGames.HasValue && result.Count > maxGames.Value)
-            return result.Take(maxGames.Value).ToList();
-
         return result;
     }
 

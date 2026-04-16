@@ -115,9 +115,6 @@ public class GameImportService
             Offers     = BuildOffers(g)
         }).Where(g => !string.IsNullOrEmpty(g.NormalizedTitle)).ToList();
 
-        if (options.Limit.HasValue && imports.Count > options.Limit.Value)
-            imports = imports.Take(options.Limit.Value).ToList();
-
         _logger.LogInformation("IGDB: {Count} games collected for import", imports.Count);
         return imports;
     }
