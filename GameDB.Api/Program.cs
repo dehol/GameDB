@@ -48,8 +48,8 @@ builder.Services.AddHttpClient<IgdbApiService>(client =>
 builder.Services.AddScoped<IIgdbApiService>(sp => sp.GetRequiredService<IgdbApiService>());
 
 // Pipeline
-builder.Services.AddSingleton<Channel<int>>(sp =>
-    Channel.CreateBounded<int>(new BoundedChannelOptions(1)
+builder.Services.AddSingleton<Channel<ImportPipelineWorkItem>>(sp =>
+    Channel.CreateBounded<ImportPipelineWorkItem>(new BoundedChannelOptions(1)
     {
         FullMode = BoundedChannelFullMode.Wait
     }));

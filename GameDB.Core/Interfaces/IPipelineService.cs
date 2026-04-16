@@ -9,7 +9,7 @@ public interface IPipelineService
     /// </summary>
     /// <returns>Pipeline ID (same as ImportJob ID)</returns>
     /// <exception cref="InvalidOperationException">Thrown when a pipeline is already running</exception>
-    Task<int> StartImportPipelineAsync();
+    Task<int> StartImportPipelineAsync(ImportPipelineOptions? options = null);
 
     /// <summary>
     /// Gets the current status of a pipeline
@@ -31,6 +31,11 @@ public interface IPipelineService
     /// </summary>
     Task<int?> GetRunningPipelineIdAsync();
 }
+
+public record ImportPipelineOptions(
+    int? Limit = null,
+    List<int>? IgdbGameIds = null,
+    bool OverwriteExisting = false);
 
 public record PipelineStatus(
     int PipelineId,

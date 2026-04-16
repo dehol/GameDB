@@ -40,11 +40,16 @@ public class GameImportService
 
     public async Task RunImportAsync(ImportJob job, CancellationToken ct)
     {
+        await RunImportAsync(job, new ImportPipelineOptions(), ct);
+    }
+
+    public async Task RunImportAsync(ImportJob job, ImportPipelineOptions options, CancellationToken ct)
+    {
         job.Status = ImportJobStatus.Running;
         job.CurrentPhase = "collecting";
         await _db.SaveChangesAsync(ct);
 
-        var games = await CollectFromIgdbAsync(job, ct);
+        var games = await CollectFromIgdbAsync(job, options, ct);
         job.SteamTotal = games.Count;
 
         if (ct.IsCancellationRequested) return;
@@ -59,7 +64,7 @@ public class GameImportService
         job.CurrentPhase = "importing";
         await _db.SaveChangesAsync(ct);
 
-        await ImportToDatabaseAsync(enriched, job, ct);
+        await ImportToDatabaseAsync(enriched, job, options, ct);
 
         job.Status = ImportJobStatus.Completed;
         job.CompletedAt = DateTime.UtcNow;
@@ -73,7 +78,7 @@ public class GameImportService
 
     // ── Phase 1: Collect from IGDB ────────────────────────────────────────
 
-    private async Task<List<GameImport>> CollectFromIgdbAsync(ImportJob job, CancellationToken ct)
+    private async Task<List<GameImport>> CollectFromIgdbAsync(ImportJob job, ImportPipelineOptions options, CancellationToken ct)
     {
         // Skip already imported IGDB IDs
         var existingIgdbIds = (await _db.Games
@@ -83,7 +88,16 @@ public class GameImportService
             .ToListAsync(ct))
             .ToHashSet();
 
-        var igdbGames = await _igdb.GetPcGamesAsync(existingIgdbIds, ct);
+        var includeIgdbIds = options.IgdbGameIds is { Count: > 0 }
+            ? options.IgdbGameIds.ToHashSet()
+            : null;
+        var excludeIgdbIds = options.OverwriteExisting ? null : existingIgdbIds;
+
+        var igdbGames = await _igdb.GetPcGamesAsync(
+            excludeIgdbIds: excludeIgdbIds,
+            includeIgdbIds: includeIgdbIds,
+            maxGames: options.Limit,
+            ct: ct);
 
         var imports = igdbGames.Select(g => new GameImport
         {
@@ -101,7 +115,10 @@ public class GameImportService
             Offers     = BuildOffers(g)
         }).Where(g => !string.IsNullOrEmpty(g.NormalizedTitle)).ToList();
 
-        _logger.LogInformation("IGDB: {Count} new games to import", imports.Count);
+        if (options.Limit.HasValue && imports.Count > options.Limit.Value)
+            imports = imports.Take(options.Limit.Value).ToList();
+
+        _logger.LogInformation("IGDB: {Count} games collected for import", imports.Count);
         return imports;
     }
 
@@ -245,7 +262,7 @@ public class GameImportService
     // ── Phase 3: Import to DB ─────────────────────────────────────────────
 
     private async Task ImportToDatabaseAsync(
-        List<GameImport> games, ImportJob job, CancellationToken ct)
+        List<GameImport> games, ImportJob job, ImportPipelineOptions options, CancellationToken ct)
     {
         _logger.LogInformation("Importing {Count} games to database", games.Count);
         await _cache.PreloadAsync();
@@ -283,6 +300,11 @@ public class GameImportService
 
                 if (existingGames.TryGetValue(import.NormalizedTitle, out var existing))
                 {
+                    if (!options.OverwriteExisting)
+                    {
+                        continue;
+                    }
+
                     var needsUpdate = false;
 
                     if (!string.IsNullOrEmpty(import.Description)

@@ -8,6 +8,8 @@ public interface IIgdbApiService
     /// </summary>
     Task<List<IgdbGame>> GetPcGamesAsync(
         ISet<int>? excludeIgdbIds = null,
+        ISet<int>? includeIgdbIds = null,
+        int? maxGames = null,
         CancellationToken ct = default);
 }
 

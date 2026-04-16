@@ -47,6 +47,8 @@ public class IgdbApiService : IIgdbApiService
 
     public async Task<List<IgdbGame>> GetPcGamesAsync(
         ISet<int>? excludeIgdbIds = null,
+        ISet<int>? includeIgdbIds = null,
+        int? maxGames = null,
         CancellationToken ct = default)
     {
         await EnsureTokenAsync(ct);
@@ -71,12 +73,20 @@ public class IgdbApiService : IIgdbApiService
             foreach (var raw in batch)
             {
                 if (excludeIgdbIds?.Contains(raw.Id) == true) continue;
+                if (includeIgdbIds != null && !includeIgdbIds.Contains(raw.Id)) continue;
 
                 var game = MapGame(raw);
                 // Only include games available on at least one store
                 if (game.SteamUrl != null || game.GogUrl != null || game.EgsUrl != null)
+                {
                     result.Add(game);
+                    if (maxGames.HasValue && result.Count >= maxGames.Value)
+                        break;
+                }
             }
+
+            if (maxGames.HasValue && result.Count >= maxGames.Value)
+                break;
 
             offset += batch.Count;
 
@@ -87,6 +97,9 @@ public class IgdbApiService : IIgdbApiService
         }
 
         _logger.LogInformation("📥 IGDB: {Count} PC games with store links fetched", result.Count);
+        if (maxGames.HasValue && result.Count > maxGames.Value)
+            return result.Take(maxGames.Value).ToList();
+
         return result;
     }
 

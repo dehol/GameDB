@@ -74,7 +74,7 @@ export const api = {
   addToLibrary: (data) => request('/library', { method: 'POST', body: JSON.stringify(data) }),
 
   // Admin: unified import pipeline
-  startImportPipeline: () => request('/import/start', { method: 'POST' }),
+  startImportPipeline: (options = {}) => request('/import/start', { method: 'POST', body: JSON.stringify(options) }),
   getImportPipelineStatus: (pipelineId) => request(`/import/status/${pipelineId}`),
   getCurrentImportPipeline: () => request('/import/current'),
 };
