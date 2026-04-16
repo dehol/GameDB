@@ -111,7 +111,7 @@ public class IgdbApiService : IIgdbApiService
                websites.url, websites.category;
         where platforms = ({PcPlatformId})
           & category = 0
-          & websites.category = ({SteamCategory},{GogCategory},{EgsCategory});
+          & websites != null;
         limit {BatchSize};
         offset {offset};
         """;
@@ -202,11 +202,11 @@ public class IgdbApiService : IIgdbApiService
             ?? developer; // fallback
 
         var steamUrl = raw.Websites?
-            .FirstOrDefault(w => w.Category == SteamCategory)?.Url;
+            .FirstOrDefault(w => w.Category == SteamCategory || IsSteamUrl(w.Url))?.Url;
         var gogUrl   = raw.Websites?
-            .FirstOrDefault(w => w.Category == GogCategory)?.Url;
+            .FirstOrDefault(w => w.Category == GogCategory || IsGogUrl(w.Url))?.Url;
         var egsUrl   = raw.Websites?
-            .FirstOrDefault(w => w.Category == EgsCategory)?.Url;
+            .FirstOrDefault(w => w.Category == EgsCategory || IsEgsUrl(w.Url))?.Url;
 
         return new IgdbGame
         {
@@ -244,6 +244,19 @@ public class IgdbApiService : IIgdbApiService
     private record IgdbCompany(int Id, string Name);
 
     private record IgdbWebsite(int Id, int Category, string Url);
+
+    private static bool IsSteamUrl(string? url) =>
+        !string.IsNullOrWhiteSpace(url) &&
+        url.Contains("store.steampowered.com", StringComparison.OrdinalIgnoreCase);
+
+    private static bool IsGogUrl(string? url) =>
+        !string.IsNullOrWhiteSpace(url) &&
+        url.Contains("gog.com", StringComparison.OrdinalIgnoreCase);
+
+    private static bool IsEgsUrl(string? url) =>
+        !string.IsNullOrWhiteSpace(url) &&
+        (url.Contains("epicgames.com", StringComparison.OrdinalIgnoreCase) ||
+         url.Contains("epic.games", StringComparison.OrdinalIgnoreCase));
 
     private record TwitchTokenResponse(
         [property: JsonPropertyName("access_token")] string AccessToken,
