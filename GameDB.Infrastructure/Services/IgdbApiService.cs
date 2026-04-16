@@ -246,17 +246,26 @@ public class IgdbApiService : IIgdbApiService
     private record IgdbWebsite(int Id, int Category, string Url);
 
     private static bool IsSteamUrl(string? url) =>
-        !string.IsNullOrWhiteSpace(url) &&
-        url.Contains("store.steampowered.com", StringComparison.OrdinalIgnoreCase);
+        HasExpectedHost(url, "store.steampowered.com");
 
     private static bool IsGogUrl(string? url) =>
-        !string.IsNullOrWhiteSpace(url) &&
-        url.Contains("gog.com", StringComparison.OrdinalIgnoreCase);
+        HasExpectedHost(url, "gog.com");
 
     private static bool IsEgsUrl(string? url) =>
-        !string.IsNullOrWhiteSpace(url) &&
-        (url.Contains("epicgames.com", StringComparison.OrdinalIgnoreCase) ||
-         url.Contains("epic.games", StringComparison.OrdinalIgnoreCase));
+        HasExpectedHost(url, "epicgames.com") ||
+        HasExpectedHost(url, "epic.games");
+
+    private static bool HasExpectedHost(string? url, string expectedHost)
+    {
+        if (string.IsNullOrWhiteSpace(url) ||
+            !Uri.TryCreate(url, UriKind.Absolute, out var uri))
+        {
+            return false;
+        }
+
+        return string.Equals(uri.Host, expectedHost, StringComparison.OrdinalIgnoreCase) ||
+               uri.Host.EndsWith($".{expectedHost}", StringComparison.OrdinalIgnoreCase);
+    }
 
     private record TwitchTokenResponse(
         [property: JsonPropertyName("access_token")] string AccessToken,
