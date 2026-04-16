@@ -35,6 +35,12 @@ public class IgdbApiService : IIgdbApiService
     // Max games per IGDB request
     private const int BatchSize = 500;
 
+    // Query profiles from strict to permissive for resilience
+    private static readonly string StrictPcMainWhereClause = $"platforms = ({PcPlatformId}) & category = 0 & websites != null";
+    private static readonly string PcWithWebsitesWhereClause = $"platforms = ({PcPlatformId}) & websites != null";
+    private const string MainWithWebsitesWhereClause = "category = 0 & websites != null";
+    private const string WebsitesOnlyWhereClause = "websites != null";
+
     // Rate limit: 4 req/sec
     private readonly SemaphoreSlim _rateLimiter = new(4, 4);
 
@@ -56,19 +62,48 @@ public class IgdbApiService : IIgdbApiService
         var result = new List<IgdbGame>();
         var offset = 0;
         var total = int.MaxValue;
+        var whereClause = StrictPcMainWhereClause;
 
         _logger.LogInformation("📥 Fetching PC games from IGDB...");
 
         while (offset < total)
         {
-            var query = BuildQuery(offset);
+            var query = BuildQuery(offset, whereClause);
             var batch = await PostQueryAsync<List<IgdbRawGame>>("games", query, ct);
+
+            if ((batch == null || batch.Count == 0) && offset == 0)
+            {
+                var fallbackClauses = new[]
+                {
+                    PcWithWebsitesWhereClause,
+                    MainWithWebsitesWhereClause,
+                    WebsitesOnlyWhereClause
+                };
+
+                foreach (var fallbackClause in fallbackClauses)
+                {
+                    _logger.LogWarning(
+                        "IGDB returned 0 results for query profile '{Profile}', trying fallback profile '{FallbackProfile}'",
+                        whereClause, fallbackClause);
+
+                    whereClause = fallbackClause;
+                    query = BuildQuery(offset, whereClause);
+                    batch = await PostQueryAsync<List<IgdbRawGame>>("games", query, ct);
+
+                    if (batch is { Count: > 0 })
+                    {
+                        _logger.LogInformation("IGDB fallback profile '{Profile}' returned {Count} games",
+                            whereClause, batch.Count);
+                        break;
+                    }
+                }
+            }
 
             if (batch == null || batch.Count == 0) break;
 
             // First request — log approximate total
             if (offset == 0)
-                _logger.LogInformation("📥 IGDB: fetching games (batch size {Size})", BatchSize);
+                _logger.LogInformation("📥 IGDB: fetching games (batch size {Size}, profile {Profile})", BatchSize, whereClause);
 
             foreach (var raw in batch)
             {
@@ -102,16 +137,14 @@ public class IgdbApiService : IIgdbApiService
 
     // ── Query builder ─────────────────────────────────────────────────────
 
-    private static string BuildQuery(int offset) => $"""
+    private static string BuildQuery(int offset, string whereClause) => $"""
         fields name, summary, first_release_date,
                genres.name,
                involved_companies.company.name,
                involved_companies.developer,
                involved_companies.publisher,
                websites.url, websites.category;
-        where platforms = ({PcPlatformId})
-          & category = 0
-          & websites.category = ({SteamCategory},{GogCategory},{EgsCategory});
+        where {whereClause};
         limit {BatchSize};
         offset {offset};
         """;
@@ -202,11 +235,11 @@ public class IgdbApiService : IIgdbApiService
             ?? developer; // fallback
 
         var steamUrl = raw.Websites?
-            .FirstOrDefault(w => w.Category == SteamCategory)?.Url;
+            .FirstOrDefault(w => w.Category == SteamCategory || IsSteamUrl(w.Url))?.Url;
         var gogUrl   = raw.Websites?
-            .FirstOrDefault(w => w.Category == GogCategory)?.Url;
+            .FirstOrDefault(w => w.Category == GogCategory || IsGogUrl(w.Url))?.Url;
         var egsUrl   = raw.Websites?
-            .FirstOrDefault(w => w.Category == EgsCategory)?.Url;
+            .FirstOrDefault(w => w.Category == EgsCategory || IsEgsUrl(w.Url))?.Url;
 
         return new IgdbGame
         {
@@ -244,6 +277,28 @@ public class IgdbApiService : IIgdbApiService
     private record IgdbCompany(int Id, string Name);
 
     private record IgdbWebsite(int Id, int Category, string Url);
+
+    private static bool IsSteamUrl(string? url) =>
+        HasExpectedHost(url, "store.steampowered.com");
+
+    private static bool IsGogUrl(string? url) =>
+        HasExpectedHost(url, "gog.com");
+
+    private static bool IsEgsUrl(string? url) =>
+        HasExpectedHost(url, "epicgames.com") ||
+        HasExpectedHost(url, "epic.games");
+
+    private static bool HasExpectedHost(string? url, string expectedHost)
+    {
+        if (string.IsNullOrWhiteSpace(url) ||
+            !Uri.TryCreate(url, UriKind.Absolute, out var uri))
+        {
+            return false;
+        }
+
+        return string.Equals(uri.Host, expectedHost, StringComparison.OrdinalIgnoreCase) ||
+               uri.Host.EndsWith($".{expectedHost}", StringComparison.OrdinalIgnoreCase);
+    }
 
     private record TwitchTokenResponse(
         [property: JsonPropertyName("access_token")] string AccessToken,
