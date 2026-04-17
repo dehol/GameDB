@@ -18,6 +18,19 @@ public class ProfileService
 
     public async Task<(bool success, string? error)> UpsertShopProfileAsync(int userId, int shopId, string externalUid)
     {
+        var user = await _db.Users
+            .AsNoTracking()
+            .FirstOrDefaultAsync(u => u.UserId == userId);
+
+        if (user == null)
+            return (false, "User not found");
+
+        if (user.IsGuest)
+            return (false, "Guest accounts cannot link shop profiles");
+
+        if (string.IsNullOrWhiteSpace(externalUid))
+            return (false, "External UID is required");
+
         if (!await _db.GameShops.AnyAsync(s => s.ShopId == shopId))
             return (false, "Shop not found");
 

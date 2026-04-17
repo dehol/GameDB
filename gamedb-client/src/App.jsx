@@ -2,7 +2,7 @@ import { BrowserRouter, Routes, Route, Navigate, Link, useLocation } from 'react
 import { ConfigProvider, Layout, Menu, Button, theme } from 'antd';
 import {
   AppstoreOutlined, HeartOutlined, UserOutlined, BellOutlined,
-  BookOutlined, SettingOutlined, SyncOutlined, LoginOutlined, LogoutOutlined,
+  BookOutlined, SettingOutlined, SyncOutlined, LogoutOutlined,
   LoadingOutlined, NotificationOutlined
 } from '@ant-design/icons';
 import { AuthProvider, useAuth } from './context/AuthContext';
@@ -35,8 +35,25 @@ function AdminRoute({ children }) {
 }
 
 function AppLayout() {
-  const { user, isAuth, logout } = useAuth();
+  const { user, isAuth, isLoading, logout } = useAuth();
   const location = useLocation();
+
+  if (isLoading) {
+    return <div style={{ textAlign: 'center', marginTop: 100 }}><LoadingOutlined style={{ fontSize: 32 }} /></div>;
+  }
+
+  if (!isAuth) {
+    return (
+      <Layout style={{ minHeight: '100vh' }}>
+        <Content style={{ padding: 24, background: '#1a1a1a', minHeight: '100vh' }}>
+          <Routes>
+            <Route path="/login" element={<LoginPage />} />
+            <Route path="*" element={<Navigate to="/login" replace />} />
+          </Routes>
+        </Content>
+      </Layout>
+    );
+  }
 
   const menuItems = [
     { key: '/', icon: <AppstoreOutlined />, label: <Link to="/">Catalog</Link> },
@@ -70,20 +87,16 @@ function AppLayout() {
       </Sider>
       <Layout>
         <Header style={{ padding: '0 24px', display: 'flex', justifyContent: 'flex-end', alignItems: 'center', background: '#141414' }}>
-          {isAuth ? (
-            <span style={{ color: '#fff' }}>
-              {user.username} ({user.role})
-              <Button type="text" icon={<LogoutOutlined />} onClick={logout} style={{ color: '#fff', marginLeft: 12 }}>Logout</Button>
-            </span>
-          ) : (
-            <Link to="/login"><Button type="primary" icon={<LoginOutlined />}>Login</Button></Link>
-          )}
+          <span style={{ color: '#fff' }}>
+            {user.username} ({user.role})
+            <Button type="text" icon={<LogoutOutlined />} onClick={logout} style={{ color: '#fff', marginLeft: 12 }}>Logout</Button>
+          </span>
         </Header>
         <Content style={{ padding: 24, background: '#1a1a1a', minHeight: 'calc(100vh - 64px)' }}>
           <Routes>
-            <Route path="/" element={<CatalogPage />} />
-            <Route path="/login" element={<LoginPage />} />
-            <Route path="/games/:id" element={<GameDetailPage />} />
+            <Route path="/" element={<PrivateRoute><CatalogPage /></PrivateRoute>} />
+            <Route path="/login" element={<Navigate to="/" replace />} />
+            <Route path="/games/:id" element={<PrivateRoute><GameDetailPage /></PrivateRoute>} />
             <Route path="/wishlist" element={<PrivateRoute><WishlistPage /></PrivateRoute>} />
             <Route path="/profile" element={<PrivateRoute><ProfilePage /></PrivateRoute>} />
             <Route path="/alerts" element={<PrivateRoute><AlertsPage /></PrivateRoute>} />
@@ -91,6 +104,7 @@ function AppLayout() {
             <Route path="/library" element={<PrivateRoute><LibraryPage /></PrivateRoute>} />
             <Route path="/admin/games" element={<AdminRoute><GamesAdminPage /></AdminRoute>} />
             <Route path="/admin/sync" element={<AdminRoute><SyncPage /></AdminRoute>} />
+            <Route path="*" element={<Navigate to="/" replace />} />
           </Routes>
         </Content>
       </Layout>
