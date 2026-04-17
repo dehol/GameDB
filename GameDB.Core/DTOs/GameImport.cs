@@ -23,6 +23,7 @@ public record GameImport
     // Rating from IGDB (0-100 scale)
     public double? Rating { get; init; }
     public int? RatingCount { get; init; }
+    public string? CoverUrl { get; init; }
     public bool IsDlc { get; init; }
 }
 

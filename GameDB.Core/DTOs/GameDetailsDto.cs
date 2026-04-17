@@ -15,6 +15,7 @@ public class GameDetailsDto
     // Rating from IGDB
     public double? Rating { get; set; }
     public int? RatingCount { get; set; }
+    public string? CoverUrl { get; set; }
     
     public DeveloperDto? Developer { get; set; }
     public PublisherDto? Publisher { get; set; }

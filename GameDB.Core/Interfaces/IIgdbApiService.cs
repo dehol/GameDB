@@ -31,5 +31,6 @@ public record IgdbGame
     // Rating (0-100 scale from IGDB)
     public double? Rating { get; init; }
     public int? RatingCount { get; init; }
+    public string? CoverUrl { get; init; }
     public bool IsDlc { get; init; }
 }

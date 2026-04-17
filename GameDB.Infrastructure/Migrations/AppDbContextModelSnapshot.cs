@@ -132,6 +132,9 @@ namespace GameDB.Infrastructure.Migrations
                     b.Property<string>("Description")
                         .HasColumnType("text");
 
+                    b.Property<string>("CoverUrl")
+                        .HasColumnType("text");
+
                     b.Property<int?>("DeveloperId")
                         .HasColumnType("integer");
 

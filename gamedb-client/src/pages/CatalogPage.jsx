@@ -24,7 +24,7 @@ const SHOPS = [
 
 const SORT_OPTIONS = [
   { value: 'relevance', label: 'Relevance' },
-  { value: 'rating', label: 'Top Rated' },
+  { value: 'popularity', label: 'Popularity' },
   { value: 'price_asc', label: 'Price: Low → High' },
   { value: 'price_desc', label: 'Price: High → Low' },
   { value: 'discount', label: 'Biggest Discount' },
@@ -162,12 +162,31 @@ function GameRow({ game, inWishlist, onWishlist, onClick }) {
       }}
     >
       {/* Cover */}
+      {game.cover_url ? (
+        <img
+          src={game.cover_url}
+          alt={game.title || 'Game cover'}
+          loading="lazy"
+          style={{
+            width: 52, height: 70, flexShrink: 0, objectFit: 'cover',
+            borderRadius: 'var(--radius)',
+            border: '1px solid var(--border)',
+            background: 'var(--bg-input)',
+          }}
+          onError={e => {
+            e.currentTarget.style.display = 'none';
+            const fallback = e.currentTarget.nextElementSibling;
+            if (fallback) fallback.style.display = 'flex';
+          }}
+        />
+      ) : null}
       <div style={{
         width: 52, height: 70, flexShrink: 0,
         borderRadius: 'var(--radius)',
         background: `hsl(${hue},28%,22%)`,
         border: '1px solid var(--border)',
-        display: 'flex', alignItems: 'center', justifyContent: 'center',
+        display: game.cover_url ? 'none' : 'flex',
+        alignItems: 'center', justifyContent: 'center',
         fontSize: 20, fontWeight: 800, color: 'rgba(255,255,255,0.5)',
         fontFamily: 'var(--font-display)',
       }}>

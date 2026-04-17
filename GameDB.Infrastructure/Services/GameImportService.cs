@@ -158,6 +158,7 @@ public class GameImportService
                 Offers = offers,
                 Rating = game.Rating,
                 RatingCount = game.RatingCount,
+                CoverUrl = game.CoverUrl,
                 IsDlc = game.IsDlc
             });
         }
@@ -455,6 +456,13 @@ public class GameImportService
                         needsUpdate = true;
                     }
 
+                    if (!string.IsNullOrWhiteSpace(import.CoverUrl) &&
+                        !string.Equals(existing.CoverUrl, import.CoverUrl, StringComparison.Ordinal))
+                    {
+                        existing.CoverUrl = import.CoverUrl;
+                        needsUpdate = true;
+                    }
+
                     if (needsUpdate)
                     {
                         existing.UpdatedAt = DateTime.UtcNow;
@@ -491,6 +499,7 @@ public class GameImportService
                         UpdatedAt       = DateTime.UtcNow,
                         Rating          = import.Rating,
                         RatingCount     = import.RatingCount,
+                        CoverUrl        = import.CoverUrl,
                         IsDlc           = import.IsDlc
                     };
 

@@ -21,6 +21,7 @@ public record GameCatalogRow
     // Rating from IGDB (0-100 scale)
     public double? rating { get; init; }
     public int? rating_count { get; init; }
+    public string? cover_url { get; init; }
     public bool is_dlc { get; init; }
 }
 

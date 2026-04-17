@@ -23,6 +23,7 @@ public class Game
     // Rating from IGDB (0-100 scale)
     public double? Rating { get; set; }
     public int? RatingCount { get; set; }
+    public string? CoverUrl { get; set; }
     public bool IsDlc { get; set; }
     
     public Developer? Developer { get; set; }

@@ -136,6 +136,7 @@ public class IgdbApiService : IIgdbApiService
     private static string BuildQuery(int offset, string whereClause) => $"""
         fields name, summary, first_release_date,
                rating, rating_count,
+               cover.url,
                category,
                genres.name,
                involved_companies.company.name,
@@ -253,6 +254,7 @@ public class IgdbApiService : IIgdbApiService
             EgsUrl            = egsUrl,
             Rating            = raw.Rating,
             RatingCount       = raw.RatingCount,
+            CoverUrl          = NormalizeCoverUrl(raw.Cover?.Url),
             IsDlc             = raw.Category is 1 or 2 or 4 or 13,
         };
     }
@@ -266,10 +268,13 @@ public class IgdbApiService : IIgdbApiService
         [property: JsonPropertyName("first_release_date")] long? FirstReleaseDate,
         double? Rating,
         [property: JsonPropertyName("rating_count")] int? RatingCount,
+        IgdbCover? Cover,
         int? Category,
         List<IgdbGenre>? Genres,
         [property: JsonPropertyName("involved_companies")] List<IgdbInvolvedCompany>? InvolvedCompanies,
         List<IgdbWebsite>? Websites);
+
+    private record IgdbCover(int Id, string? Url);
 
     private record IgdbGenre(
         [property: JsonPropertyName("id")] int Id, 
@@ -304,6 +309,17 @@ public class IgdbApiService : IIgdbApiService
 
         return string.Equals(uri.Host, expectedHost, StringComparison.OrdinalIgnoreCase) ||
                uri.Host.EndsWith($".{expectedHost}", StringComparison.OrdinalIgnoreCase);
+    }
+
+    private static string? NormalizeCoverUrl(string? igdbUrl)
+    {
+        if (string.IsNullOrWhiteSpace(igdbUrl)) return null;
+
+        var normalized = igdbUrl.StartsWith("//", StringComparison.Ordinal)
+            ? $"https:{igdbUrl}"
+            : igdbUrl;
+
+        return normalized.Replace("/t_thumb/", "/t_cover_big_2x/", StringComparison.OrdinalIgnoreCase);
     }
 
     private record TwitchTokenResponse(

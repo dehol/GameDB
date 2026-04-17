@@ -62,10 +62,12 @@ public class GameService
         // Count before pagination
         var totalCount = await query.CountAsync();
 
-        // Weighted rating baseline for "Top Rated" sorting
+        var sortKey = sortBy?.ToLowerInvariant();
+
+        // Weighted rating baseline for "Popularity" sorting
         const int bayesianPriorVotes = 100;
         var globalAverageRating = 0d;
-        if (string.Equals(sortBy, "rating", StringComparison.OrdinalIgnoreCase))
+        if (sortKey is "rating" or "popularity")
         {
             globalAverageRating = await query
                 .Where(g => g.rating > 0 && g.rating_count > 0)
@@ -73,9 +75,17 @@ public class GameService
         }
 
         // Apply sorting
-        query = sortBy?.ToLower() switch
+        query = sortKey switch
         {
             "rating" => query
+                .OrderByDescending(g =>
+                    (g.rating ?? 0) > 0 && (g.rating_count ?? 0) > 0
+                        ? ((((g.rating_count ?? 0) * (g.rating ?? 0d)) + (bayesianPriorVotes * globalAverageRating))
+                            / ((g.rating_count ?? 0) + bayesianPriorVotes))
+                        : 0d)
+                .ThenByDescending(g => g.rating_count ?? 0)
+                .ThenByDescending(g => g.rating ?? 0),
+            "popularity" => query
                 .OrderByDescending(g =>
                     (g.rating ?? 0) > 0 && (g.rating_count ?? 0) > 0
                         ? ((((g.rating_count ?? 0) * (g.rating ?? 0d)) + (bayesianPriorVotes * globalAverageRating))
@@ -127,6 +137,7 @@ public class GameService
             UpdatedAt = game.UpdatedAt,
             Rating = game.Rating,
             RatingCount = game.RatingCount,
+            CoverUrl = game.CoverUrl,
             Developer = game.Developer == null ? null : new DeveloperDto 
             { 
                 DeveloperId = game.Developer.DeveloperId, 
