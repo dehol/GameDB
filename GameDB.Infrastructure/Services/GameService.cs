@@ -10,7 +10,7 @@ public class GameService
     public GameService(AppDbContext db) => _db = db;
 
     public async Task<(List<GameCatalogRow> items, int totalCount)> GetCatalogAsync(
-        string? search, int? genreId, int? shopId, string? sortBy, int page, int pageSize)
+        string? search, int? genreId, int? shopId, string? sortBy, string? contentType, int page, int pageSize)
     {
         // Base query from view - EF Core 7+ allows composing LINQ over raw SQL
         var query = _db.Database
@@ -37,6 +37,13 @@ public class GameService
                 .Distinct();
             query = query.Where(g => gameIds.Contains(g.GameId));
         }
+
+        query = contentType?.ToLowerInvariant() switch
+        {
+            "games" => query.Where(g => !g.is_dlc),
+            "dlc" => query.Where(g => g.is_dlc),
+            _ => query
+        };
 
         // Count before pagination
         var totalCount = await query.CountAsync();

@@ -116,7 +116,8 @@ public class GameImportService
             RawgId     = g.Id,
             Offers     = BuildOffers(g),
             Rating     = g.Rating,
-            RatingCount = g.RatingCount
+            RatingCount = g.RatingCount,
+            IsDlc = g.IsDlc
         }).Where(g => !string.IsNullOrEmpty(g.NormalizedTitle)).ToList();
 
         // Filter out games with no store offers
@@ -368,6 +369,12 @@ public class GameImportService
                         }
                     }
 
+                    if (existing.IsDlc != import.IsDlc)
+                    {
+                        existing.IsDlc = import.IsDlc;
+                        needsUpdate = true;
+                    }
+
                     if (needsUpdate)
                     { existing.UpdatedAt = DateTime.UtcNow; gamesToUpdate.Add(existing); }
 
@@ -388,7 +395,8 @@ public class GameImportService
                         CreatedAt       = DateTime.UtcNow,
                         UpdatedAt       = DateTime.UtcNow,
                         Rating          = import.Rating,
-                        RatingCount     = import.RatingCount
+                        RatingCount     = import.RatingCount,
+                        IsDlc           = import.IsDlc
                     };
 
                     newGames.Add(game);

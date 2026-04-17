@@ -28,13 +28,14 @@ public class GamesController : ControllerBase
         [FromQuery] int? genreId,
         [FromQuery] int? shopId,
         [FromQuery] string? sortBy,
+        [FromQuery] string? contentType,
         [FromQuery] int page = 1,
         [FromQuery] int pageSize = 20)
     {
         if (page < 1) page = 1;
         if (pageSize < 1 || pageSize > 100) pageSize = 20;
 
-        var (items, totalCount) = await _games.GetCatalogAsync(search, genreId, shopId, sortBy, page, pageSize);
+        var (items, totalCount) = await _games.GetCatalogAsync(search, genreId, shopId, sortBy, contentType, page, pageSize);
         return Ok(new { items, totalCount, page, pageSize });
     }
 

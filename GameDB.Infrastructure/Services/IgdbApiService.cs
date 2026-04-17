@@ -11,7 +11,7 @@ namespace GameDB.Infrastructure.Services;
 /// IGDB API client.
 /// - Auth via Twitch client_credentials (token auto-refreshed)
 /// - Batch queries: 500 games per request with full metadata
-/// - PC platform (id=6), main games only (category=0)
+/// - PC platform (id=6), includes base games and DLC/expansions
 /// - Filters games that have at least one of: Steam, GOG, EGS store URL
 /// </summary>
 public class IgdbApiService : IIgdbApiService
@@ -36,7 +36,7 @@ public class IgdbApiService : IIgdbApiService
     private const int BatchSize = 500;
 
     // Query profiles from strict to permissive for resilience
-    private static readonly string StrictPcMainWhereClause = $"platforms = ({PcPlatformId}) & category = 0 & websites != null";
+    private static readonly string StrictPcContentWhereClause = $"platforms = ({PcPlatformId}) & category = (0,1,2,4) & websites != null";
     private static readonly string PcWithWebsitesWhereClause = $"platforms = ({PcPlatformId}) & websites != null";
     private const string MainWithWebsitesWhereClause = "category = 0 & websites != null";
     private const string WebsitesOnlyWhereClause = "websites != null";
@@ -62,7 +62,7 @@ public class IgdbApiService : IIgdbApiService
         var result = new List<IgdbGame>();
         var offset = 0;
         var total = int.MaxValue;
-        var whereClause = StrictPcMainWhereClause;
+        var whereClause = StrictPcContentWhereClause;
 
         _logger.LogInformation("📥 Fetching PC games from IGDB...");
 
@@ -140,6 +140,7 @@ public class IgdbApiService : IIgdbApiService
     private static string BuildQuery(int offset, string whereClause) => $"""
         fields name, summary, first_release_date,
                rating, rating_count,
+               category,
                genres.name,
                involved_companies.company.name,
                involved_companies.developer,
@@ -256,6 +257,7 @@ public class IgdbApiService : IIgdbApiService
             EgsUrl            = egsUrl,
             Rating            = raw.Rating,
             RatingCount       = raw.RatingCount,
+            IsDlc             = raw.Category is 1 or 2 or 4,
         };
     }
 
@@ -268,6 +270,7 @@ public class IgdbApiService : IIgdbApiService
         [property: JsonPropertyName("first_release_date")] long? FirstReleaseDate,
         double? Rating,
         [property: JsonPropertyName("rating_count")] int? RatingCount,
+        int? Category,
         List<IgdbGenre>? Genres,
         [property: JsonPropertyName("involved_companies")] List<IgdbInvolvedCompany>? InvolvedCompanies,
         List<IgdbWebsite>? Websites);
