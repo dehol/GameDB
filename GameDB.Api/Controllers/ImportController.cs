@@ -1,4 +1,5 @@
 using GameDB.Core.Interfaces;
+using GameDB.Core.DTOs.Import;
 using GameDB.Core.Models;
 using GameDB.Infrastructure;
 using Microsoft.AspNetCore.Authorization;
@@ -34,11 +35,18 @@ public class ImportController : ControllerBase
     [HttpPost("start")]
     [ProducesResponseType(StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status409Conflict)]
-    public async Task<IActionResult> StartImport()
+    public async Task<IActionResult> StartImport([FromBody] ImportStartRequest? request = null)
     {
         try
         {
-            var pipelineId = await _pipelineService.StartImportPipelineAsync();
+            var options = request == null
+                ? null
+                : new ImportPipelineOptions(
+                    Limit: request.Limit,
+                    IgdbGameIds: request.IgdbGameIds,
+                    OverwriteExisting: request.OverwriteExisting);
+
+            var pipelineId = await _pipelineService.StartImportPipelineAsync(options);
             
             return Ok(new
             {

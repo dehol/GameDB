@@ -19,6 +19,12 @@ public class Game
     
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
     public DateTime UpdatedAt { get; set; } = DateTime.UtcNow;
+    
+    // Rating from IGDB (0-100 scale)
+    public double? Rating { get; set; }
+    public int? RatingCount { get; set; }
+    public bool IsDlc { get; set; }
+    
     public Developer? Developer { get; set; }
     public Publisher? Publisher { get; set; }
     public ICollection<GameGenre> GameGenres { get; set; } = new List<GameGenre>();

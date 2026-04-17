@@ -40,11 +40,16 @@ public class GameImportService
 
     public async Task RunImportAsync(ImportJob job, CancellationToken ct)
     {
+        await RunImportAsync(job, new ImportPipelineOptions(), ct);
+    }
+
+    public async Task RunImportAsync(ImportJob job, ImportPipelineOptions options, CancellationToken ct)
+    {
         job.Status = ImportJobStatus.Running;
         job.CurrentPhase = "collecting";
         await _db.SaveChangesAsync(ct);
 
-        var games = await CollectFromIgdbAsync(job, ct);
+        var games = await CollectFromIgdbAsync(job, options, ct);
         job.SteamTotal = games.Count;
 
         if (ct.IsCancellationRequested) return;
@@ -52,14 +57,16 @@ public class GameImportService
         job.CurrentPhase = "enriching_prices";
         await _db.SaveChangesAsync(ct);
 
-        var enriched = await EnrichWithSteamPricesAsync(games, ct);
+        // Skip Steam price enrichment - prices will be synced separately via PriceSyncWorker
+        _logger.LogInformation("Skipping Steam price enrichment - will be synced separately");
+        var enriched = games;
 
         if (ct.IsCancellationRequested) return;
 
         job.CurrentPhase = "importing";
         await _db.SaveChangesAsync(ct);
 
-        await ImportToDatabaseAsync(enriched, job, ct);
+        await ImportToDatabaseAsync(enriched, job, options, ct);
 
         job.Status = ImportJobStatus.Completed;
         job.CompletedAt = DateTime.UtcNow;
@@ -73,7 +80,7 @@ public class GameImportService
 
     // ── Phase 1: Collect from IGDB ────────────────────────────────────────
 
-    private async Task<List<GameImport>> CollectFromIgdbAsync(ImportJob job, CancellationToken ct)
+    private async Task<List<GameImport>> CollectFromIgdbAsync(ImportJob job, ImportPipelineOptions options, CancellationToken ct)
     {
         // Skip already imported IGDB IDs
         var existingIgdbIds = (await _db.Games
@@ -83,7 +90,16 @@ public class GameImportService
             .ToListAsync(ct))
             .ToHashSet();
 
-        var igdbGames = await _igdb.GetPcGamesAsync(existingIgdbIds, ct);
+        var includeIgdbIds = options.IgdbGameIds is { Count: > 0 }
+            ? options.IgdbGameIds.ToHashSet()
+            : null;
+        var excludeIgdbIds = options.OverwriteExisting ? null : existingIgdbIds;
+
+        var igdbGames = await _igdb.GetPcGamesAsync(
+            excludeIgdbIds: excludeIgdbIds,
+            includeIgdbIds: includeIgdbIds,
+            maxGames: options.Limit,
+            ct: ct);
 
         var imports = igdbGames.Select(g => new GameImport
         {
@@ -97,12 +113,29 @@ public class GameImportService
             Developer  = g.Developer,
             Publisher  = g.Publisher,
             Genres     = g.Genres,
-            RawgId     = g.Id, // storing IGDB ID here
-            Offers     = BuildOffers(g)
+            RawgId     = g.Id,
+            Offers     = BuildOffers(g),
+            Rating     = g.Rating,
+            RatingCount = g.RatingCount,
+            IsDlc = g.IsDlc
         }).Where(g => !string.IsNullOrEmpty(g.NormalizedTitle)).ToList();
 
-        _logger.LogInformation("IGDB: {Count} new games to import", imports.Count);
-        return imports;
+        // Filter out games with no store offers
+        var gamesWithOffers = imports.Where(i => i.Offers.Count > 0).ToList();
+        var skippedCount = imports.Count - gamesWithOffers.Count;
+        if (skippedCount > 0)
+        {
+            _logger.LogInformation("IGDB: Skipped {Count} games with no store offers (Steam/GOG/EGS)", skippedCount);
+        }
+
+        _logger.LogInformation("IGDB: {Count} games collected for import", gamesWithOffers.Count);
+        var gamesWithGenres = gamesWithOffers.Where(i => i.Genres.Count > 0).ToList();
+        _logger.LogInformation("IGDB: {Count} games have genres", gamesWithGenres.Count);
+        foreach (var import in gamesWithGenres.Take(5)) // Log first 5
+        {
+            _logger.LogInformation("Game '{Title}' genres: {Genres}", import.Title, string.Join(", ", import.Genres));
+        }
+        return gamesWithOffers;
     }
 
     private static List<GameOfferImport> BuildOffers(IgdbGame g)
@@ -245,7 +278,7 @@ public class GameImportService
     // ── Phase 3: Import to DB ─────────────────────────────────────────────
 
     private async Task ImportToDatabaseAsync(
-        List<GameImport> games, ImportJob job, CancellationToken ct)
+        List<GameImport> games, ImportJob job, ImportPipelineOptions options, CancellationToken ct)
     {
         _logger.LogInformation("Importing {Count} games to database", games.Count);
         await _cache.PreloadAsync();
@@ -260,6 +293,20 @@ public class GameImportService
             .ToListAsync(ct))
             .Where(g => g.NormalizedTitle != null)
             .ToDictionary(g => g.NormalizedTitle!);
+
+        // Load existing GameGenres for games we're about to process
+        var existingGameIds = existingGames.Values.Select(g => g.GameId).ToList();
+        var existingGameGenres = await _db.GameGenres
+            .AsNoTracking()
+            .Where(gg => existingGameIds.Contains(gg.GameId))
+            .Select(gg => new { gg.GameId, gg.GenreId })
+            .ToListAsync(ct);
+        var existingGameGenreSet = existingGameGenres
+            .Select(gg => $"{gg.GameId}:{gg.GenreId}")
+            .ToHashSet();
+
+        _logger.LogInformation("Found {ExistingGames} existing games with {ExistingGenres} genre links", 
+            existingGames.Count, existingGameGenreSet.Count);
 
         var externalIds = games
             .SelectMany(g => g.Offers.Select(o => o.ExternalId))
@@ -283,6 +330,14 @@ public class GameImportService
 
                 if (existingGames.TryGetValue(import.NormalizedTitle, out var existing))
                 {
+                    if (!options.OverwriteExisting)
+                    {
+                        _logger.LogDebug("Skipping existing game '{Title}' - OverwriteExisting is false", import.Title);
+                        continue;
+                    }
+
+                    _logger.LogInformation("Updating existing game '{Title}' (GameId={GameId})", import.Title, existing.GameId);
+                    
                     var needsUpdate = false;
 
                     if (!string.IsNullOrEmpty(import.Description)
@@ -301,6 +356,25 @@ public class GameImportService
                     if (pubId.HasValue && existing.PublisherId != pubId)
                     { existing.PublisherId = pubId; needsUpdate = true; }
 
+                    // Update rating if new data available
+                    if (import.Rating.HasValue && import.RatingCount.HasValue)
+                    {
+                        if (existing.Rating != import.Rating || existing.RatingCount != import.RatingCount)
+                        {
+                            existing.Rating = import.Rating;
+                            existing.RatingCount = import.RatingCount;
+                            needsUpdate = true;
+                            _logger.LogDebug("Updated rating for '{Title}': {Rating} ({Count} votes)", 
+                                import.Title, import.Rating, import.RatingCount);
+                        }
+                    }
+
+                    if (existing.IsDlc != import.IsDlc)
+                    {
+                        existing.IsDlc = import.IsDlc;
+                        needsUpdate = true;
+                    }
+
                     if (needsUpdate)
                     { existing.UpdatedAt = DateTime.UtcNow; gamesToUpdate.Add(existing); }
 
@@ -315,11 +389,14 @@ public class GameImportService
                         NormalizedTitle = import.NormalizedTitle,
                         Description     = import.Description,
                         ReleaseDate     = import.ReleaseDate,
-                        RawgId          = import.RawgId, // IGDB ID stored here
+                        RawgId          = import.RawgId,
                         DeveloperId     = await _cache.GetOrCreateDeveloperIdAsync(import.Developer),
                         PublisherId     = await _cache.GetOrCreatePublisherIdAsync(import.Publisher),
                         CreatedAt       = DateTime.UtcNow,
-                        UpdatedAt       = DateTime.UtcNow
+                        UpdatedAt       = DateTime.UtcNow,
+                        Rating          = import.Rating,
+                        RatingCount     = import.RatingCount,
+                        IsDlc           = import.IsDlc
                     };
 
                     newGames.Add(game);
@@ -332,21 +409,47 @@ public class GameImportService
 
         if (newGames.Count > 0)
         {
-            await _db.BulkInsertAsync(newGames, cancellationToken: ct);
+            var bulkConfig = new BulkConfig { SetOutputIdentity = true };
+            await _db.BulkInsertAsync(newGames, bulkConfig, cancellationToken: ct);
             job.TotalGamesCreated = newGames.Count;
+
+            // Rebuild existingGames with the new GameIds after bulk insert
+            foreach (var game in newGames)
+            {
+                if (!string.IsNullOrEmpty(game.NormalizedTitle))
+                    existingGames[game.NormalizedTitle] = game;
+            }
 
             foreach (var import in games)
             {
                 if (string.IsNullOrEmpty(import.NormalizedTitle)) continue;
                 if (!existingGames.TryGetValue(import.NormalizedTitle, out var game)) continue;
-                if (newGames.All(g => g.NormalizedTitle != import.NormalizedTitle)) continue;
 
+                var genreCount = 0;
                 foreach (var genreName in import.Genres.Where(g => !string.IsNullOrWhiteSpace(g)))
+                {
+                    var genreId = await _cache.GetOrCreateGenreIdAsync(genreName);
+                    var genreKey = $"{game.GameId}:{genreId}";
+                    
+                    // Skip if this GameGenre already exists in DB
+                    if (existingGameGenreSet.Contains(genreKey))
+                    {
+                        _logger.LogDebug("Skipping existing GameGenre: GameId={GameId}, GenreId={GenreId}", game.GameId, genreId);
+                        continue;
+                    }
+                    
                     newGameGenres.Add(new GameGenre
                     {
                         GameId  = game.GameId,
-                        GenreId = await _cache.GetOrCreateGenreIdAsync(genreName)
+                        GenreId = genreId
                     });
+                    genreCount++;
+                }
+                
+                if (genreCount > 0)
+                {
+                    _logger.LogInformation("Added {Count} new genres for game '{Title}' (GameId={GameId})", genreCount, import.Title, game.GameId);
+                }
 
                 ProcessOffers(game.GameId, import.Offers,
                     existingOffers, newOffers, offersToUpdate);
@@ -354,11 +457,43 @@ public class GameImportService
         }
 
         if (gamesToUpdate.Count  > 0) await _db.BulkUpdateAsync(gamesToUpdate,  cancellationToken: ct);
-        if (newGameGenres.Count  > 0) await _db.BulkInsertAsync(newGameGenres,  cancellationToken: ct);
+        if (newGameGenres.Count  > 0)
+        {
+            // Remove duplicates within the batch
+            var distinctGenres = newGameGenres
+                .GroupBy(g => new { g.GameId, g.GenreId })
+                .Select(g => g.First())
+                .ToList();
+            
+            _logger.LogInformation("Inserting {Count} distinct GameGenre records", distinctGenres.Count);
+            
+            try
+            {
+                await _db.BulkInsertAsync(distinctGenres, cancellationToken: ct);
+                _logger.LogInformation("Successfully inserted {Count} GameGenre records", distinctGenres.Count);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Failed to insert GameGenre records. Count={Count}", distinctGenres.Count);
+                throw;
+            }
+        }
         if (newOffers.Count      > 0)
         {
-            await _db.BulkInsertAsync(newOffers, cancellationToken: ct);
-            job.TotalOffersCreated = newOffers.Count;
+            // Remove duplicates by (GameId, ShopId) - keep first
+            var distinctOffers = newOffers
+                .GroupBy(o => new { o.GameId, o.ShopId })
+                .Select(g => g.First())
+                .ToList();
+            
+            if (distinctOffers.Count < newOffers.Count)
+            {
+                _logger.LogWarning("Removed {Count} duplicate offers (same GameId+ShopId)", 
+                    newOffers.Count - distinctOffers.Count);
+            }
+            
+            await _db.BulkInsertAsync(distinctOffers, cancellationToken: ct);
+            job.TotalOffersCreated = distinctOffers.Count;
         }
         if (offersToUpdate.Count > 0) await _db.BulkUpdateAsync(offersToUpdate, cancellationToken: ct);
 

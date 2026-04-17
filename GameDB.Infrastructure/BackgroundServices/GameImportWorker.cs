@@ -16,12 +16,12 @@ public class GameImportWorker : BackgroundService
 {
     private readonly IServiceProvider _serviceProvider;
     private readonly ILogger<GameImportWorker> _logger;
-    private readonly Channel<int> _pipelineChannel;
+    private readonly Channel<ImportPipelineWorkItem> _pipelineChannel;
 
     public GameImportWorker(
         IServiceProvider serviceProvider,
         ILogger<GameImportWorker> logger,
-        Channel<int> pipelineChannel)
+        Channel<ImportPipelineWorkItem> pipelineChannel)
     {
         _serviceProvider = serviceProvider;
         _logger = logger;
@@ -32,11 +32,11 @@ public class GameImportWorker : BackgroundService
     {
         _logger.LogInformation("🎮 Game Import Worker started");
 
-        await foreach (var pipelineId in _pipelineChannel.Reader.ReadAllAsync(stoppingToken))
+        await foreach (var workItem in _pipelineChannel.Reader.ReadAllAsync(stoppingToken))
         {
             try
             {
-                await ProcessPipelineAsync(pipelineId, stoppingToken);
+                await ProcessPipelineAsync(workItem, stoppingToken);
             }
             catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested)
             {
@@ -45,19 +45,20 @@ public class GameImportWorker : BackgroundService
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "❌ Pipeline {PipelineId} failed with unhandled exception", pipelineId);
+                _logger.LogError(ex, "❌ Pipeline {PipelineId} failed with unhandled exception", workItem.PipelineId);
             }
         }
 
         _logger.LogInformation("🎮 Game Import Worker stopped");
     }
 
-    private async Task ProcessPipelineAsync(int pipelineId, CancellationToken ct)
+    private async Task ProcessPipelineAsync(ImportPipelineWorkItem workItem, CancellationToken ct)
     {
         using var scope = _serviceProvider.CreateScope();
         var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
         var importService = scope.ServiceProvider.GetRequiredService<GameImportService>();
 
+        var pipelineId = workItem.PipelineId;
         var job = await db.ImportJobs.FindAsync(pipelineId, ct);
         if (job == null)
         {
@@ -71,7 +72,7 @@ public class GameImportWorker : BackgroundService
         try
         {
             // Run unified import
-            await importService.RunImportAsync(job, ct);
+            await importService.RunImportAsync(job, workItem.Options, ct);
             
             _logger.LogInformation(
                 "✅ Pipeline {PipelineId} completed in {Duration:mm\\:ss}. " +
