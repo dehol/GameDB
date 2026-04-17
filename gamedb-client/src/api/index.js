@@ -42,6 +42,7 @@ export const api = {
     if (params?.search) q.set('search', params.search);
     if (params?.genreId) q.set('genreId', params.genreId);
     if (params?.shopId) q.set('shopId', params.shopId);
+    if (params?.sortBy) q.set('sortBy', params.sortBy);
     if (params?.page) q.set('page', params.page);
     if (params?.pageSize) q.set('pageSize', params.pageSize);
     return request(`/games?${q}`);
