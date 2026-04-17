@@ -11,7 +11,7 @@ namespace GameDB.Infrastructure.Services;
 /// IGDB API client.
 /// - Auth via Twitch client_credentials (token auto-refreshed)
 /// - Batch queries: 500 games per request with full metadata
-/// - PC platform (id=6), main games only (category=0)
+/// - PC platform (id=6), includes base games and DLC/expansions
 /// - Filters games that have at least one of: Steam, GOG, EGS store URL
 /// </summary>
 public class IgdbApiService : IIgdbApiService
@@ -35,6 +35,12 @@ public class IgdbApiService : IIgdbApiService
     // Max games per IGDB request
     private const int BatchSize = 500;
 
+    // Query profiles from strict to permissive for resilience
+    private static readonly string StrictPcContentWhereClause = $"platforms = ({PcPlatformId}) & category = (0,1,2,4) & websites != null";
+    private static readonly string PcWithWebsitesWhereClause = $"platforms = ({PcPlatformId}) & websites != null";
+    private const string MainWithWebsitesWhereClause = "category = 0 & websites != null";
+    private const string WebsitesOnlyWhereClause = "websites != null";
+
     // Rate limit: 4 req/sec
     private readonly SemaphoreSlim _rateLimiter = new(4, 4);
 
@@ -47,6 +53,8 @@ public class IgdbApiService : IIgdbApiService
 
     public async Task<List<IgdbGame>> GetPcGamesAsync(
         ISet<int>? excludeIgdbIds = null,
+        ISet<int>? includeIgdbIds = null,
+        int? maxGames = null,
         CancellationToken ct = default)
     {
         await EnsureTokenAsync(ct);
@@ -54,29 +62,66 @@ public class IgdbApiService : IIgdbApiService
         var result = new List<IgdbGame>();
         var offset = 0;
         var total = int.MaxValue;
+        var whereClause = StrictPcContentWhereClause;
 
         _logger.LogInformation("📥 Fetching PC games from IGDB...");
 
         while (offset < total)
         {
-            var query = BuildQuery(offset);
+            var query = BuildQuery(offset, whereClause);
             var batch = await PostQueryAsync<List<IgdbRawGame>>("games", query, ct);
+
+            if ((batch == null || batch.Count == 0) && offset == 0)
+            {
+                var fallbackClauses = new[]
+                {
+                    PcWithWebsitesWhereClause,
+                    MainWithWebsitesWhereClause,
+                    WebsitesOnlyWhereClause
+                };
+
+                foreach (var fallbackClause in fallbackClauses)
+                {
+                    _logger.LogWarning(
+                        "IGDB returned 0 results for query profile '{Profile}', trying fallback profile '{FallbackProfile}'",
+                        whereClause, fallbackClause);
+
+                    whereClause = fallbackClause;
+                    query = BuildQuery(offset, whereClause);
+                    batch = await PostQueryAsync<List<IgdbRawGame>>("games", query, ct);
+
+                    if (batch is { Count: > 0 })
+                    {
+                        _logger.LogInformation("IGDB fallback profile '{Profile}' returned {Count} games",
+                            whereClause, batch.Count);
+                        break;
+                    }
+                }
+            }
 
             if (batch == null || batch.Count == 0) break;
 
             // First request — log approximate total
             if (offset == 0)
-                _logger.LogInformation("📥 IGDB: fetching games (batch size {Size})", BatchSize);
+                _logger.LogInformation("📥 IGDB: fetching games (batch size {Size}, profile {Profile})", BatchSize, whereClause);
 
             foreach (var raw in batch)
             {
                 if (excludeIgdbIds?.Contains(raw.Id) == true) continue;
+                if (includeIgdbIds != null && !includeIgdbIds.Contains(raw.Id)) continue;
 
                 var game = MapGame(raw);
                 // Only include games available on at least one store
                 if (game.SteamUrl != null || game.GogUrl != null || game.EgsUrl != null)
+                {
                     result.Add(game);
+                    if (maxGames.HasValue && result.Count >= maxGames.Value)
+                        break;
+                }
             }
+
+            if (maxGames.HasValue && result.Count >= maxGames.Value)
+                break;
 
             offset += batch.Count;
 
@@ -92,16 +137,16 @@ public class IgdbApiService : IIgdbApiService
 
     // ── Query builder ─────────────────────────────────────────────────────
 
-    private static string BuildQuery(int offset) => $"""
+    private static string BuildQuery(int offset, string whereClause) => $"""
         fields name, summary, first_release_date,
+               rating, rating_count,
+               category,
                genres.name,
                involved_companies.company.name,
                involved_companies.developer,
                involved_companies.publisher,
                websites.url, websites.category;
-        where platforms = ({PcPlatformId})
-          & category = 0
-          & websites.category = ({SteamCategory},{GogCategory},{EgsCategory});
+        where {whereClause};
         limit {BatchSize};
         offset {offset};
         """;
@@ -192,11 +237,11 @@ public class IgdbApiService : IIgdbApiService
             ?? developer; // fallback
 
         var steamUrl = raw.Websites?
-            .FirstOrDefault(w => w.Category == SteamCategory)?.Url;
+            .FirstOrDefault(w => w.Category == SteamCategory || IsSteamUrl(w.Url))?.Url;
         var gogUrl   = raw.Websites?
-            .FirstOrDefault(w => w.Category == GogCategory)?.Url;
+            .FirstOrDefault(w => w.Category == GogCategory || IsGogUrl(w.Url))?.Url;
         var egsUrl   = raw.Websites?
-            .FirstOrDefault(w => w.Category == EgsCategory)?.Url;
+            .FirstOrDefault(w => w.Category == EgsCategory || IsEgsUrl(w.Url))?.Url;
 
         return new IgdbGame
         {
@@ -210,6 +255,9 @@ public class IgdbApiService : IIgdbApiService
             SteamUrl          = steamUrl,
             GogUrl            = gogUrl,
             EgsUrl            = egsUrl,
+            Rating            = raw.Rating,
+            RatingCount       = raw.RatingCount,
+            IsDlc             = raw.Category is 1 or 2 or 4 or 13,
         };
     }
 
@@ -220,11 +268,16 @@ public class IgdbApiService : IIgdbApiService
         string Name,
         string? Summary,
         [property: JsonPropertyName("first_release_date")] long? FirstReleaseDate,
+        double? Rating,
+        [property: JsonPropertyName("rating_count")] int? RatingCount,
+        int? Category,
         List<IgdbGenre>? Genres,
         [property: JsonPropertyName("involved_companies")] List<IgdbInvolvedCompany>? InvolvedCompanies,
         List<IgdbWebsite>? Websites);
 
-    private record IgdbGenre(int Id, string Name);
+    private record IgdbGenre(
+        [property: JsonPropertyName("id")] int Id, 
+        [property: JsonPropertyName("name")] string Name);
 
     private record IgdbInvolvedCompany(
         bool Developer,
@@ -234,6 +287,28 @@ public class IgdbApiService : IIgdbApiService
     private record IgdbCompany(int Id, string Name);
 
     private record IgdbWebsite(int Id, int Category, string Url);
+
+    private static bool IsSteamUrl(string? url) =>
+        HasExpectedHost(url, "store.steampowered.com");
+
+    private static bool IsGogUrl(string? url) =>
+        HasExpectedHost(url, "gog.com");
+
+    private static bool IsEgsUrl(string? url) =>
+        HasExpectedHost(url, "epicgames.com") ||
+        HasExpectedHost(url, "epic.games");
+
+    private static bool HasExpectedHost(string? url, string expectedHost)
+    {
+        if (string.IsNullOrWhiteSpace(url) ||
+            !Uri.TryCreate(url, UriKind.Absolute, out var uri))
+        {
+            return false;
+        }
+
+        return string.Equals(uri.Host, expectedHost, StringComparison.OrdinalIgnoreCase) ||
+               uri.Host.EndsWith($".{expectedHost}", StringComparison.OrdinalIgnoreCase);
+    }
 
     private record TwitchTokenResponse(
         [property: JsonPropertyName("access_token")] string AccessToken,

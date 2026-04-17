@@ -17,6 +17,11 @@ public record GameCatalogRow
     public long? available_in_shops { get; init; }
     public DateTime CreatedAt { get; init; }
     public DateTime UpdatedAt { get; init; }
+    
+    // Rating from IGDB (0-100 scale)
+    public double? rating { get; init; }
+    public int? rating_count { get; init; }
+    public bool is_dlc { get; init; }
 }
 
 /// <summary>

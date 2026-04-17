@@ -8,6 +8,8 @@ public interface IIgdbApiService
     /// </summary>
     Task<List<IgdbGame>> GetPcGamesAsync(
         ISet<int>? excludeIgdbIds = null,
+        ISet<int>? includeIgdbIds = null,
+        int? maxGames = null,
         CancellationToken ct = default);
 }
 
@@ -25,4 +27,9 @@ public record IgdbGame
     public string? SteamUrl { get; init; }    // category 13
     public string? GogUrl { get; init; }      // category 17
     public string? EgsUrl { get; init; }      // category 16
+    
+    // Rating (0-100 scale from IGDB)
+    public double? Rating { get; init; }
+    public int? RatingCount { get; init; }
+    public bool IsDlc { get; init; }
 }

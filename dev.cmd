@@ -1,4 +1,3 @@
 @echo off
-setlocal
-powershell -NoProfile -ExecutionPolicy Bypass -File "%~dp0dev.ps1"
-endlocal
+:: Legacy wrapper - redirects to new start.cmd
+call "%~dp0start.cmd"

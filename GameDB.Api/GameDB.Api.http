@@ -1,2 +1,2 @@
-GET http://localhost:5212/weatherforecast
+GET http://localhost:5212
 Accept: application/json

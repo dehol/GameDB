@@ -42,6 +42,8 @@ export const api = {
     if (params?.search) q.set('search', params.search);
     if (params?.genreId) q.set('genreId', params.genreId);
     if (params?.shopId) q.set('shopId', params.shopId);
+    if (params?.sortBy) q.set('sortBy', params.sortBy);
+    if (params?.contentType) q.set('contentType', params.contentType);
     if (params?.page) q.set('page', params.page);
     if (params?.pageSize) q.set('pageSize', params.pageSize);
     return request(`/games?${q}`);
@@ -74,7 +76,7 @@ export const api = {
   addToLibrary: (data) => request('/library', { method: 'POST', body: JSON.stringify(data) }),
 
   // Admin: unified import pipeline
-  startImportPipeline: () => request('/import/start', { method: 'POST' }),
+  startImportPipeline: (options = {}) => request('/import/start', { method: 'POST', body: JSON.stringify(options) }),
   getImportPipelineStatus: (pipelineId) => request(`/import/status/${pipelineId}`),
   getCurrentImportPipeline: () => request('/import/current'),
 };

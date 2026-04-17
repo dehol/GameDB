@@ -19,15 +19,23 @@ const GENRES = [
 const SHOPS = [
   { value: 1, label: 'Steam' },
   { value: 2, label: 'GOG' },
+  { value: 3, label: 'Epic Games Store' },
 ];
 
 const SORT_OPTIONS = [
   { value: 'relevance', label: 'Relevance' },
+  { value: 'rating', label: 'Top Rated' },
   { value: 'price_asc', label: 'Price: Low → High' },
   { value: 'price_desc', label: 'Price: High → Low' },
   { value: 'discount', label: 'Biggest Discount' },
   { value: 'name', label: 'Name A–Z' },
   { value: 'newest', label: 'Newest First' },
+];
+
+const CONTENT_TYPE_OPTIONS = [
+  { value: 'all', label: 'All' },
+  { value: 'games', label: 'Games only' },
+  { value: 'dlc', label: 'DLC only' },
 ];
 
 const DISCOUNT_PRESETS = [
@@ -73,13 +81,13 @@ function FSelect({ value, onChange, options, placeholder }) {
       style={{
         width: '100%', padding: '7px 8px',
         background: 'var(--bg-input)', border: '1px solid var(--border)',
-        color: value ? 'var(--text-primary)' : 'var(--text-secondary)',
+        color: value ? 'var(--text-primary)' : 'var(--text-muted)',
         borderRadius: 'var(--radius)', fontSize: 12, cursor: 'pointer',
         outline: 'none',
       }}
     >
-      {placeholder && <option value="">{placeholder}</option>}
-      {options.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
+      {placeholder && <option value="" style={{ color: 'var(--text-muted)' }}>{placeholder}</option>}
+      {options.map(o => <option key={o.value} value={o.value} style={{ color: 'var(--text-primary)' }}>{o.label}</option>)}
     </select>
   );
 }
@@ -187,6 +195,24 @@ function GameRow({ game, inWishlist, onWishlist, onClick }) {
               borderRadius: 'var(--radius)', color: 'var(--text-muted)',
             }}>{g}</span>
           ))}
+          {game.rating > 0 && (
+            <span style={{
+              fontSize: 10, padding: '2px 6px',
+              background: 'rgba(24,144,255,0.15)', border: '1px solid rgba(24,144,255,0.3)',
+              borderRadius: 'var(--radius)', color: '#1890ff',
+            }}>
+              ★ {Math.round(game.rating)}/100
+            </span>
+          )}
+          {game.is_dlc && (
+            <span style={{
+              fontSize: 10, padding: '2px 6px',
+              background: 'rgba(245, 34, 45, 0.15)', border: '1px solid rgba(245, 34, 45, 0.35)',
+              borderRadius: 'var(--radius)', color: '#f5222d',
+            }}>
+              DLC
+            </span>
+          )}
           {game.available_in_shops > 0 && (
             <span style={{
               fontSize: 10, padding: '2px 6px',
@@ -251,12 +277,13 @@ export default function CatalogPage() {
   const [minDiscount, setMinDiscount] = useState(0);
   const [onSaleOnly, setOnSaleOnly] = useState(false);
   const [sortBy, setSortBy] = useState('relevance');
+  const [contentType, setContentType] = useState('all');
   const [page, setPage] = useState(1);
 
   const navigate = useNavigate();
   const { isAuth } = useAuth();
 
-  const hasFilters = genreId || shopId || maxPrice || minDiscount > 0 || onSaleOnly || sortBy !== 'relevance';
+  const hasFilters = genreId || shopId || maxPrice || minDiscount > 0 || onSaleOnly || sortBy !== 'relevance' || contentType !== 'all';
 
   useEffect(() => {
     if (isAuth) {
@@ -282,6 +309,7 @@ export default function CatalogPage() {
         minDiscount: minDiscount > 0 ? minDiscount : undefined,
         onSaleOnly: onSaleOnly || undefined,
         sortBy: sortBy !== 'relevance' ? sortBy : undefined,
+        contentType: contentType !== 'all' ? contentType : undefined,
         page,
         pageSize: PAGE_SIZE,
       });
@@ -291,7 +319,7 @@ export default function CatalogPage() {
       message.error(e.message);
     }
     setLoading(false);
-  }, [debouncedSearch, genreId, shopId, maxPrice, minDiscount, onSaleOnly, sortBy, page]);
+  }, [debouncedSearch, genreId, shopId, maxPrice, minDiscount, onSaleOnly, sortBy, contentType, page]);
 
   useEffect(() => { fetchGames(); }, [fetchGames]);
 
@@ -309,7 +337,7 @@ export default function CatalogPage() {
 
   const clearFilters = () => {
     setGenreId(null); setShopId(null); setMaxPrice('');
-    setMinDiscount(0); setOnSaleOnly(false); setSortBy('relevance'); setPage(1);
+    setMinDiscount(0); setOnSaleOnly(false); setSortBy('relevance'); setContentType('all'); setPage(1);
   };
 
   const totalPages = Math.ceil(total / PAGE_SIZE);
@@ -341,6 +369,15 @@ export default function CatalogPage() {
             value={sortBy}
             onChange={v => { setSortBy(v || 'relevance'); setPage(1); }}
             options={SORT_OPTIONS}
+          />
+        </div>
+
+        <div>
+          <FilterLabel>Content type</FilterLabel>
+          <FSelect
+            value={contentType}
+            onChange={v => { setContentType(v || 'all'); setPage(1); }}
+            options={CONTENT_TYPE_OPTIONS}
           />
         </div>
 
@@ -438,6 +475,9 @@ export default function CatalogPage() {
           <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginBottom: 12 }}>
             {sortBy !== 'relevance' && (
               <Chip label={`Sort: ${SORT_OPTIONS.find(o => o.value === sortBy)?.label}`} onRemove={() => setSortBy('relevance')} />
+            )}
+            {contentType !== 'all' && (
+              <Chip label={`Type: ${CONTENT_TYPE_OPTIONS.find(o => o.value === contentType)?.label}`} onRemove={() => setContentType('all')} />
             )}
             {genreId && (
               <Chip label={GENRES.find(g => g.value === genreId)?.label} onRemove={() => setGenreId(null)} />

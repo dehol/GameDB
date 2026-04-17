@@ -14,19 +14,19 @@ public class ImportPipelineService : IPipelineService
 {
     private readonly IServiceProvider _serviceProvider;
     private readonly ILogger<ImportPipelineService> _logger;
-    private readonly Channel<int> _pipelineChannel;
+    private readonly Channel<ImportPipelineWorkItem> _pipelineChannel;
 
     public ImportPipelineService(
         IServiceProvider serviceProvider,
         ILogger<ImportPipelineService> logger,
-        Channel<int> pipelineChannel)
+        Channel<ImportPipelineWorkItem> pipelineChannel)
     {
         _serviceProvider = serviceProvider;
         _logger = logger;
         _pipelineChannel = pipelineChannel;
     }
 
-    public async Task<int> StartImportPipelineAsync()
+    public async Task<int> StartImportPipelineAsync(ImportPipelineOptions? options = null)
     {
         using var scope = _serviceProvider.CreateScope();
         var db = GetDb(scope);
@@ -59,7 +59,9 @@ public class ImportPipelineService : IPipelineService
         _logger.LogInformation("Created import pipeline {PipelineId}", pipelineId);
 
         // Send to channel for processing
-        if (!_pipelineChannel.Writer.TryWrite(pipelineId))
+        var normalizedOptions = NormalizeOptions(options);
+
+        if (!_pipelineChannel.Writer.TryWrite(new ImportPipelineWorkItem(pipelineId, normalizedOptions)))
         {
             job.Status = ImportJobStatus.Failed;
             job.ErrorMessage = "Pipeline channel is not available";
@@ -146,4 +148,31 @@ public class ImportPipelineService : IPipelineService
             .Where(j => j.Status == ImportJobStatus.Running || j.Status == ImportJobStatus.Pending)
             .OrderByDescending(j => j.StartedAt)
             .FirstOrDefaultAsync();
+
+    private static ImportPipelineOptions NormalizeOptions(ImportPipelineOptions? options)
+    {
+        if (options == null) return new ImportPipelineOptions();
+
+        var limit = options.Limit.GetValueOrDefault() > 0
+            ? options.Limit
+            : null;
+
+        List<int>? igdbGameIds = null;
+        if (options.IgdbGameIds is { Count: > 0 })
+        {
+            igdbGameIds = options.IgdbGameIds
+                .Where(id => id > 0)
+                .Distinct()
+                .ToList();
+            if (igdbGameIds.Count == 0)
+                igdbGameIds = null;
+        }
+
+        return new ImportPipelineOptions(
+            Limit: limit,
+            IgdbGameIds: igdbGameIds,
+            OverwriteExisting: options.OverwriteExisting);
+    }
 }
+
+public record ImportPipelineWorkItem(int PipelineId, ImportPipelineOptions Options);

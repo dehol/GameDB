@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from 'react';
-import { Card, Button, Descriptions, message, Progress } from 'antd';
+import { Card, Button, Descriptions, message, Progress, Form, InputNumber, Input, Switch } from 'antd';
 import { SyncOutlined, ImportOutlined } from '@ant-design/icons';
 import { api } from '../../api';
 
@@ -8,6 +8,11 @@ export default function SyncPage() {
   const [gogResult, setGogResult] = useState(null);
   const [importResult, setImportResult] = useState(null);
   const [loading, setLoading] = useState(null);
+  const [importOptions, setImportOptions] = useState({
+    limit: null,
+    igdbGameIdsText: '',
+    overwriteExisting: false
+  });
   const pollRef = useRef(null);
 
   useEffect(() => () => {
@@ -37,7 +42,18 @@ export default function SyncPage() {
   const startUnifiedImport = async () => {
     setLoading('import');
     try {
-      const res = await api.startImportPipeline();
+      const igdbGameIds = importOptions.igdbGameIdsText
+        .split(/[\s,]+/)
+        .map(x => Number(x))
+        .filter(x => Number.isInteger(x) && x > 0);
+
+      const payload = {
+        limit: importOptions.limit,
+        igdbGameIds: igdbGameIds.length > 0 ? igdbGameIds : null,
+        overwriteExisting: importOptions.overwriteExisting
+      };
+
+      const res = await api.startImportPipeline(payload);
       const pipelineId = res.pipelineId;
       message.success(`Import started (pipeline #${pipelineId}). Progress updates below.`);
 
@@ -128,6 +144,33 @@ export default function SyncPage() {
       <p style={{ color: '#888', marginBottom: 16 }}>
         Runs in the background via RAWG import pipeline. You can leave this page and return later to check status.
       </p>
+      <Card style={{ marginBottom: 16 }}>
+        <Form layout="vertical">
+          <Form.Item label="Limit games to import">
+            <InputNumber
+              min={1}
+              style={{ width: 240 }}
+              value={importOptions.limit}
+              onChange={(value) => setImportOptions(prev => ({ ...prev, limit: value ?? null }))}
+              placeholder="No limit"
+            />
+          </Form.Item>
+          <Form.Item label="Specific IGDB game IDs (comma or space separated)">
+            <Input.TextArea
+              rows={3}
+              value={importOptions.igdbGameIdsText}
+              onChange={(e) => setImportOptions(prev => ({ ...prev, igdbGameIdsText: e.target.value }))}
+              placeholder="e.g. 1942, 1020 7346"
+            />
+          </Form.Item>
+          <Form.Item label="Overwrite existing games" valuePropName="checked">
+            <Switch
+              checked={importOptions.overwriteExisting}
+              onChange={(checked) => setImportOptions(prev => ({ ...prev, overwriteExisting: checked }))}
+            />
+          </Form.Item>
+        </Form>
+      </Card>
       <ResultCard
         title="Start Games Import"
         result={importResult}
