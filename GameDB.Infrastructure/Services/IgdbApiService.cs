@@ -139,6 +139,7 @@ public class IgdbApiService : IIgdbApiService
 
     private static string BuildQuery(int offset, string whereClause) => $"""
         fields name, summary, first_release_date,
+               rating, rating_count,
                genres.name,
                involved_companies.company.name,
                involved_companies.developer,
@@ -253,6 +254,8 @@ public class IgdbApiService : IIgdbApiService
             SteamUrl          = steamUrl,
             GogUrl            = gogUrl,
             EgsUrl            = egsUrl,
+            Rating            = raw.Rating,
+            RatingCount       = raw.RatingCount,
         };
     }
 
@@ -263,11 +266,15 @@ public class IgdbApiService : IIgdbApiService
         string Name,
         string? Summary,
         [property: JsonPropertyName("first_release_date")] long? FirstReleaseDate,
+        double? Rating,
+        [property: JsonPropertyName("rating_count")] int? RatingCount,
         List<IgdbGenre>? Genres,
         [property: JsonPropertyName("involved_companies")] List<IgdbInvolvedCompany>? InvolvedCompanies,
         List<IgdbWebsite>? Websites);
 
-    private record IgdbGenre(int Id, string Name);
+    private record IgdbGenre(
+        [property: JsonPropertyName("id")] int Id, 
+        [property: JsonPropertyName("name")] string Name);
 
     private record IgdbInvolvedCompany(
         bool Developer,

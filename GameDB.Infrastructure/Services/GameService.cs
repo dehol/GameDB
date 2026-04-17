@@ -10,7 +10,7 @@ public class GameService
     public GameService(AppDbContext db) => _db = db;
 
     public async Task<(List<GameCatalogRow> items, int totalCount)> GetCatalogAsync(
-        string? search, int? genreId, int? shopId, int page, int pageSize)
+        string? search, int? genreId, int? shopId, string? sortBy, int page, int pageSize)
     {
         // Base query from view - EF Core 7+ allows composing LINQ over raw SQL
         var query = _db.Database
@@ -41,9 +41,22 @@ public class GameService
         // Count before pagination
         var totalCount = await query.CountAsync();
 
+        // Apply sorting
+        query = sortBy?.ToLower() switch
+        {
+            "rating" => query
+                .Where(g => g.rating > 0)  // Only games with rating
+                .OrderByDescending(g => g.rating),
+            "price_asc" => query.OrderBy(g => g.min_price ?? decimal.MaxValue),
+            "price_desc" => query.OrderByDescending(g => g.min_price ?? 0),
+            "discount" => query.OrderByDescending(g => g.max_discount ?? 0),
+            "name" => query.OrderBy(g => g.Title),
+            "newest" => query.OrderByDescending(g => g.ReleaseDate ?? DateOnly.MinValue),
+            _ => query.OrderByDescending(g => g.UpdatedAt) // relevance / default
+        };
+
         // Apply pagination at database level
         var items = await query
-            .OrderByDescending(g => g.UpdatedAt)
             .Skip((page - 1) * pageSize)
             .Take(pageSize)
             .ToListAsync();
@@ -51,11 +64,11 @@ public class GameService
         return (items, totalCount);
     }
 
-    public async Task<Game?> GetByIdAsync(int gameId)
+    public async Task<GameDetailsDto?> GetByIdAsync(int gameId)
     {
         var cutoff = DateTime.UtcNow.AddDays(-180);
 
-        return await _db.Games
+        var game = await _db.Games
             .Include(g => g.Developer)
             .Include(g => g.Publisher)
             .Include(g => g.GameGenres).ThenInclude(gg => gg.Genre)
@@ -65,6 +78,50 @@ public class GameService
                 .OrderByDescending(ph => ph.RecordedAt))
             .AsSplitQuery()
             .FirstOrDefaultAsync(g => g.GameId == gameId);
+
+        if (game == null) return null;
+
+        return new GameDetailsDto
+        {
+            GameId = game.GameId,
+            Title = game.Title,
+            Description = game.Description,
+            ReleaseDate = game.ReleaseDate,
+            CreatedAt = game.CreatedAt,
+            UpdatedAt = game.UpdatedAt,
+            Rating = game.Rating,
+            RatingCount = game.RatingCount,
+            Developer = game.Developer == null ? null : new DeveloperDto 
+            { 
+                DeveloperId = game.Developer.DeveloperId, 
+                Name = game.Developer.Name 
+            },
+            Publisher = game.Publisher == null ? null : new PublisherDto 
+            { 
+                PublisherId = game.Publisher.PublisherId, 
+                Name = game.Publisher.Name 
+            },
+            Genres = game.GameGenres.Select(gg => gg.Genre.Name).ToList(),
+            Offers = game.Offers.Select(o => new GameOfferDto
+            {
+                GameOfferId = o.GameOfferId,
+                ShopId = o.ShopId,
+                ShopName = o.Shop.Name,
+                ExternalId = o.ExternalId,
+                DownloadUrl = o.DownloadUrl,
+                CurrentPrice = o.CurrentPrice,
+                CurrentDiscount = o.CurrentDiscount,
+                Currency = o.Currency,
+                PriceSyncedAt = o.PriceSyncedAt,
+                PriceHistory = o.PriceHistories.Select(ph => new PriceHistoryDto
+                {
+                    PriceHistoryId = ph.PriceHistoryId,
+                    Price = ph.Price,
+                    DiscountPercent = ph.DiscountPercent,
+                    RecordedAt = ph.RecordedAt
+                }).ToList()
+            }).ToList()
+        };
     }
 
     /// <summary>

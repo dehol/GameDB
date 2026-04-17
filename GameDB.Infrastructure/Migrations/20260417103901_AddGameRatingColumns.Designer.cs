@@ -4,6 +4,7 @@ using System.Collections.Generic;
 using GameDB.Infrastructure;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 
@@ -12,9 +13,11 @@ using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 namespace GameDB.Infrastructure.Migrations
 {
     [DbContext(typeof(AppDbContext))]
-    partial class AppDbContextModelSnapshot : ModelSnapshot
+    [Migration("20260417103901_AddGameRatingColumns")]
+    partial class AddGameRatingColumns
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder
@@ -174,68 +177,68 @@ namespace GameDB.Infrastructure.Migrations
                         new
                         {
                             GameId = 1,
-                            CreatedAt = new DateTime(2026, 4, 17, 10, 40, 47, 614, DateTimeKind.Utc).AddTicks(4760),
+                            CreatedAt = new DateTime(2026, 4, 17, 10, 39, 0, 680, DateTimeKind.Utc).AddTicks(9023),
                             Description = "An epic RPG set in the D&D universe",
                             DeveloperId = 1,
                             PublisherId = 1,
                             ReleaseDate = new DateOnly(2023, 8, 3),
                             Title = "Baldur's Gate 3",
-                            UpdatedAt = new DateTime(2026, 4, 17, 10, 40, 47, 614, DateTimeKind.Utc).AddTicks(4761)
+                            UpdatedAt = new DateTime(2026, 4, 17, 10, 39, 0, 680, DateTimeKind.Utc).AddTicks(9024)
                         },
                         new
                         {
                             GameId = 2,
-                            CreatedAt = new DateTime(2026, 4, 17, 10, 40, 47, 614, DateTimeKind.Utc).AddTicks(4765),
+                            CreatedAt = new DateTime(2026, 4, 17, 10, 39, 0, 680, DateTimeKind.Utc).AddTicks(9029),
                             Description = "Open-world action RPG in a dystopian future",
                             DeveloperId = 2,
                             PublisherId = 2,
                             ReleaseDate = new DateOnly(2020, 12, 10),
                             Title = "Cyberpunk 2077",
-                            UpdatedAt = new DateTime(2026, 4, 17, 10, 40, 47, 614, DateTimeKind.Utc).AddTicks(4766)
+                            UpdatedAt = new DateTime(2026, 4, 17, 10, 39, 0, 680, DateTimeKind.Utc).AddTicks(9029)
                         },
                         new
                         {
                             GameId = 3,
-                            CreatedAt = new DateTime(2026, 4, 17, 10, 40, 47, 614, DateTimeKind.Utc).AddTicks(4771),
+                            CreatedAt = new DateTime(2026, 4, 17, 10, 39, 0, 680, DateTimeKind.Utc).AddTicks(9034),
                             Description = "Open-world action RPG by FromSoftware and George R.R. Martin",
                             DeveloperId = 3,
                             PublisherId = 3,
                             ReleaseDate = new DateOnly(2022, 2, 25),
                             Title = "Elden Ring",
-                            UpdatedAt = new DateTime(2026, 4, 17, 10, 40, 47, 614, DateTimeKind.Utc).AddTicks(4772)
+                            UpdatedAt = new DateTime(2026, 4, 17, 10, 39, 0, 680, DateTimeKind.Utc).AddTicks(9034)
                         },
                         new
                         {
                             GameId = 4,
-                            CreatedAt = new DateTime(2026, 4, 17, 10, 40, 47, 614, DateTimeKind.Utc).AddTicks(4776),
+                            CreatedAt = new DateTime(2026, 4, 17, 10, 39, 0, 680, DateTimeKind.Utc).AddTicks(9039),
                             Description = "Roguelike action sequel from Supergiant Games",
                             DeveloperId = 4,
                             PublisherId = 4,
                             ReleaseDate = new DateOnly(2024, 5, 6),
                             Title = "Hades II",
-                            UpdatedAt = new DateTime(2026, 4, 17, 10, 40, 47, 614, DateTimeKind.Utc).AddTicks(4777)
+                            UpdatedAt = new DateTime(2026, 4, 17, 10, 39, 0, 680, DateTimeKind.Utc).AddTicks(9039)
                         },
                         new
                         {
                             GameId = 5,
-                            CreatedAt = new DateTime(2026, 4, 17, 10, 40, 47, 614, DateTimeKind.Utc).AddTicks(4780),
+                            CreatedAt = new DateTime(2026, 4, 17, 10, 39, 0, 680, DateTimeKind.Utc).AddTicks(9043),
                             Description = "Competitive tactical FPS",
                             DeveloperId = 5,
                             PublisherId = 5,
                             ReleaseDate = new DateOnly(2023, 9, 27),
                             Title = "Counter-Strike 2",
-                            UpdatedAt = new DateTime(2026, 4, 17, 10, 40, 47, 614, DateTimeKind.Utc).AddTicks(4781)
+                            UpdatedAt = new DateTime(2026, 4, 17, 10, 39, 0, 680, DateTimeKind.Utc).AddTicks(9043)
                         },
                         new
                         {
                             GameId = 6,
-                            CreatedAt = new DateTime(2026, 4, 17, 10, 40, 47, 614, DateTimeKind.Utc).AddTicks(4785),
+                            CreatedAt = new DateTime(2026, 4, 17, 10, 39, 0, 680, DateTimeKind.Utc).AddTicks(9046),
                             Description = "Story-driven open world RPG",
                             DeveloperId = 2,
                             PublisherId = 2,
                             ReleaseDate = new DateOnly(2015, 5, 19),
                             Title = "The Witcher 3: Wild Hunt",
-                            UpdatedAt = new DateTime(2026, 4, 17, 10, 40, 47, 614, DateTimeKind.Utc).AddTicks(4785)
+                            UpdatedAt = new DateTime(2026, 4, 17, 10, 39, 0, 680, DateTimeKind.Utc).AddTicks(9047)
                         });
                 });
 

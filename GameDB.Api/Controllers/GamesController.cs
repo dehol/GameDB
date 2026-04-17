@@ -1,3 +1,4 @@
+using GameDB.Core.DTOs;
 using GameDB.Core.Models;
 using GameDB.Infrastructure.Services;
 using Microsoft.AspNetCore.Authorization;
@@ -10,7 +11,13 @@ namespace GameDB.Api.Controllers;
 public class GamesController : ControllerBase
 {
     private readonly GameService _games;
-    public GamesController(GameService games) => _games = games;
+    private readonly ILogger<GamesController> _logger;
+
+    public GamesController(GameService games, ILogger<GamesController> logger)
+    {
+        _games = games;
+        _logger = logger;
+    }
 
     public record CreateGameDto(string Title, string? Description, DateOnly? ReleaseDate, int? DeveloperId, int? PublisherId, List<int> GenreIds);
     public record UpdateGameDto(string Title, string? Description, DateOnly? ReleaseDate, int? DeveloperId, int? PublisherId, List<int> GenreIds);
@@ -20,21 +27,26 @@ public class GamesController : ControllerBase
         [FromQuery] string? search,
         [FromQuery] int? genreId,
         [FromQuery] int? shopId,
+        [FromQuery] string? sortBy,
         [FromQuery] int page = 1,
         [FromQuery] int pageSize = 20)
     {
         if (page < 1) page = 1;
         if (pageSize < 1 || pageSize > 100) pageSize = 20;
 
-        var (items, totalCount) = await _games.GetCatalogAsync(search, genreId, shopId, page, pageSize);
+        var (items, totalCount) = await _games.GetCatalogAsync(search, genreId, shopId, sortBy, page, pageSize);
         return Ok(new { items, totalCount, page, pageSize });
     }
 
     [HttpGet("{id}")]
-    public async Task<IActionResult> GetById(int id)
+    public async Task<ActionResult<GameDetailsDto>> GetById(int id)
     {
         var game = await _games.GetByIdAsync(id);
         if (game == null) return NotFound();
+
+        _logger.LogInformation("Returning game {GameId} with {GenreCount} genres and {OfferCount} offers",
+            id, game.Genres?.Count ?? 0, game.Offers?.Count ?? 0);
+
         return Ok(game);
     }
 
