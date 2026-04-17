@@ -360,6 +360,8 @@ public class GameImportService
                     _logger.LogInformation("Updating existing game '{Title}' (GameId={GameId})", import.Title, existing.GameId);
                     
                     var needsUpdate = false;
+                    var offersCreatedBefore = counters.OffersCreated;
+                    var offersUpdatedBefore = counters.OffersUpdated;
 
                     if (!string.IsNullOrEmpty(import.Description)
                         && import.Description != existing.Description)
@@ -400,10 +402,22 @@ public class GameImportService
                     {
                         existing.UpdatedAt = DateTime.UtcNow;
                         gamesToUpdate.Add(existing);
-                        counters.GamesUpdated++;
                     }
 
                     ProcessOffers(existing.GameId, import.Offers, existingOffers, newOffers, offersToUpdate, counters);
+
+                    var hasOfferChanges =
+                        counters.OffersCreated > offersCreatedBefore ||
+                        counters.OffersUpdated > offersUpdatedBefore;
+
+                    if (needsUpdate || hasOfferChanges)
+                    {
+                        counters.GamesUpdated++;
+                    }
+                    else
+                    {
+                        counters.GamesSkipped++;
+                    }
                 }
                 else
                 {
