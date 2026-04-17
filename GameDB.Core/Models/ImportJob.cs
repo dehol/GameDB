@@ -54,8 +54,22 @@ public class ImportJob
     public int TotalOffersSkipped { get; set; }
     public int TotalOffersFailed { get; set; }
     public int ErrorCount { get; set; }
+
+    // Collection/import telemetry
+    public int IgdbCollected { get; set; }
+    public int EligibleForImport { get; set; }
+    public int SkippedAlreadyImported { get; set; }
+    public int SkippedNoStoreOffers { get; set; }
+    public int SkippedInvalidStoreIds { get; set; }
+    public int SkippedDuplicateTitles { get; set; }
+
+    // Requested options
+    public int? RequestedLimit { get; set; }
+    public string? RequestedIgdbGameIds { get; set; }
+    public bool RequestedOverwriteExisting { get; set; }
     
     public DateTime StartedAt { get; set; }
     public DateTime? CompletedAt { get; set; }
     public string? ErrorMessage { get; set; }
+    public string? WarningMessage { get; set; }
 }

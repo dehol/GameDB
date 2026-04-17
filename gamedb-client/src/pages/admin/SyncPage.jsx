@@ -27,6 +27,7 @@ const HEARTBEAT_WARN_MS = 3 * 60 * 1000;
 
 function getStatusColor(status) {
   if (status === 'completed') return 'success';
+  if (status === 'completed_with_warnings') return 'warning';
   if (status === 'failed') return 'error';
   if (status === 'cancelled') return 'warning';
   if (status === 'running') return 'processing';
@@ -56,6 +57,10 @@ function fmtEta(seconds) {
   const m = Math.floor((total % 3600) / 60);
   const s = total % 60;
   return `${h}h ${m}m ${s}s`;
+}
+
+function formatSkipReasons(row) {
+  return `already: ${row.skippedAlreadyImported || 0}, no offers: ${row.skippedNoStoreOffers || 0}, invalid IDs: ${row.skippedInvalidStoreIds || 0}, dup title: ${row.skippedDuplicateTitles || 0}`;
 }
 
 export default function SyncPage() {
@@ -135,7 +140,7 @@ export default function SyncPage() {
     };
   }, [currentJob?.pipelineId, currentJob?.status]);
 
-  const startImport = async () => {
+  const startImport = async (overridePayload = null) => {
     if (currentJob?.status === 'running' || currentJob?.status === 'pending') {
       message.warning('Import pipeline is already active');
       return;
@@ -143,16 +148,18 @@ export default function SyncPage() {
 
     setActionLoading('start');
     try {
-      const igdbGameIds = importOptions.igdbGameIdsText
-        .split(/[\s,]+/)
-        .map(Number)
-        .filter((x) => Number.isInteger(x) && x > 0);
+      const payload = overridePayload || (() => {
+        const igdbGameIds = importOptions.igdbGameIdsText
+          .split(/[\s,]+/)
+          .map(Number)
+          .filter((x) => Number.isInteger(x) && x > 0);
 
-      const payload = {
-        limit: importOptions.limit,
-        igdbGameIds: igdbGameIds.length > 0 ? igdbGameIds : null,
-        overwriteExisting: importOptions.overwriteExisting,
-      };
+        return {
+          limit: importOptions.limit,
+          igdbGameIds: igdbGameIds.length > 0 ? igdbGameIds : null,
+          overwriteExisting: importOptions.overwriteExisting,
+        };
+      })();
 
       const res = await api.startImportPipeline(payload);
       message.success(`Import started (#${res.pipelineId})`);
@@ -188,7 +195,18 @@ export default function SyncPage() {
       return;
     }
     setActionLoading('retry');
-    await startImport();
+    const last = history[0];
+    const igdbIdsRaw = Array.isArray(last.requestedIgdbGameIds)
+      ? last.requestedIgdbGameIds
+      : String(last.requestedIgdbGameIds || '')
+        .split(',')
+        .map((x) => Number(x.trim()))
+        .filter((x) => Number.isInteger(x) && x > 0);
+    await startImport({
+      limit: last.requestedLimit || null,
+      igdbGameIds: igdbIdsRaw.length > 0 ? igdbIdsRaw : null,
+      overwriteExisting: Boolean(last.requestedOverwriteExisting),
+    });
     setActionLoading(null);
   };
 
@@ -243,7 +261,9 @@ export default function SyncPage() {
         return (
           <div>
             <Progress percent={pct} size="small" status={row.status === 'failed' ? 'exception' : 'normal'} />
-            <Text type="secondary">{processed}/{total}</Text>
+            <div style={{ marginTop: 4 }}>
+              <Text type="secondary">{processed}/{total}</Text>
+            </div>
           </div>
         );
       },
@@ -253,6 +273,16 @@ export default function SyncPage() {
       key: 'metrics',
       width: 260,
       render: (_, row) => `${row.totalGamesCreated || 0} / ${row.totalGamesUpdated || 0} / ${row.totalGamesSkipped || 0} / ${row.totalGamesFailed || 0}`,
+    },
+    {
+      title: 'Skip reasons',
+      key: 'skipReasons',
+      width: 260,
+      render: (_, row) => (
+        <Text type="secondary">
+          {formatSkipReasons(row)}
+        </Text>
+      ),
     },
     {
       title: 'Started',
@@ -357,7 +387,7 @@ export default function SyncPage() {
               </Form.Item>
             </Col>
             <Col xs={24} md={4}>
-              <Form.Item label="Overwrite existing" valuePropName="checked">
+              <Form.Item label="Import mode: update existing" valuePropName="checked">
                 <Switch
                   checked={importOptions.overwriteExisting}
                   onChange={(checked) => setImportOptions((prev) => ({ ...prev, overwriteExisting: checked }))}
@@ -366,6 +396,16 @@ export default function SyncPage() {
             </Col>
           </Row>
         </Form>
+        <Alert
+          style={{ marginTop: 8 }}
+          type="info"
+          showIcon
+          message={
+            importOptions.overwriteExisting
+              ? 'Mode: update existing + import new.'
+              : 'Mode: import only new games (existing games will be skipped).'
+          }
+        />
       </Card>
 
       <Card title="Current Pipeline" style={{ marginBottom: 16 }}>
@@ -392,6 +432,12 @@ export default function SyncPage() {
             )}
 
             <Row gutter={[16, 16]} style={{ marginTop: 12 }}>
+              <Col xs={12} md={6}><Statistic title="Collected (IGDB)" value={currentJob.igdbCollected || 0} /></Col>
+              <Col xs={12} md={6}><Statistic title="Eligible" value={currentJob.eligibleForImport || 0} /></Col>
+              <Col xs={12} md={6}><Statistic title="Skipped Already Imported" value={currentJob.skippedAlreadyImported || 0} /></Col>
+              <Col xs={12} md={6}><Statistic title="Skipped No Offers" value={currentJob.skippedNoStoreOffers || 0} /></Col>
+              <Col xs={12} md={6}><Statistic title="Skipped Invalid IDs" value={currentJob.skippedInvalidStoreIds || 0} /></Col>
+              <Col xs={12} md={6}><Statistic title="Skipped Duplicate Title" value={currentJob.skippedDuplicateTitles || 0} /></Col>
               <Col xs={12} md={6}><Statistic title="Processed / Total" value={`${currentJob.processedGames || 0} / ${currentJob.totalGames || 0}`} /></Col>
               <Col xs={12} md={6}><Statistic title="New Games" value={currentJob.importedGames || 0} /></Col>
               <Col xs={12} md={6}><Statistic title="Updated Games" value={currentJob.updatedGames || 0} /></Col>
@@ -408,6 +454,14 @@ export default function SyncPage() {
 
             {currentJob.errorMessage && (
               <Alert style={{ marginTop: 12 }} type="error" showIcon message={currentJob.errorMessage} />
+            )}
+            {(currentJob.warningMessage || (currentJob.status === 'completed_with_warnings' && (currentJob.importedGames || 0) === 0)) && (
+              <Alert
+                style={{ marginTop: 12 }}
+                type="warning"
+                showIcon
+                message={currentJob.warningMessage || 'Why 0 imported: no eligible games remained after filtering.'}
+              />
             )}
 
             <Table
@@ -433,6 +487,7 @@ export default function SyncPage() {
         <Space style={{ marginBottom: 12 }}>
           <Button onClick={() => applyFilter(undefined)}>All</Button>
           <Button onClick={() => applyFilter('completed')}>Completed</Button>
+          <Button onClick={() => applyFilter('completed_with_warnings')}>Completed w/ warnings</Button>
           <Button onClick={() => applyFilter('failed')}>Failed</Button>
           <Button onClick={() => applyFilter('cancelled')}>Cancelled</Button>
         </Space>

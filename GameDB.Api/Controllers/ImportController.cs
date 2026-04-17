@@ -150,7 +150,8 @@ public class ImportController : ControllerBase
         var query = _db.ImportJobs.AsQueryable();
 
         // Apply status filter
-        if (!string.IsNullOrEmpty(status) && Enum.TryParse<ImportJobStatus>(status, ignoreCase: true, out var statusEnum))
+        var normalizedStatus = NormalizeStatusQuery(status);
+        if (!string.IsNullOrEmpty(normalizedStatus) && Enum.TryParse<ImportJobStatus>(normalizedStatus, ignoreCase: true, out var statusEnum))
         {
             query = query.Where(j => j.Status == statusEnum);
         }
@@ -172,11 +173,19 @@ public class ImportController : ControllerBase
             .Select(j => new
             {
                 j.ImportJobId,
-                Status = j.Status.ToString().ToLowerInvariant(),
+                Status = j.Status == ImportJobStatus.CompletedWithWarnings
+                    ? "completed_with_warnings"
+                    : j.Status.ToString().ToLowerInvariant(),
                 j.CurrentPhase,
                 j.IsSteamCatalogImport,
                 totalGames = j.SteamTotal,
                 processedGames = j.TotalGamesCreated + j.TotalGamesUpdated + j.TotalGamesSkipped + j.TotalGamesFailed,
+                j.IgdbCollected,
+                j.EligibleForImport,
+                j.SkippedAlreadyImported,
+                j.SkippedNoStoreOffers,
+                j.SkippedInvalidStoreIds,
+                j.SkippedDuplicateTitles,
                 j.TotalGamesCreated,
                 j.TotalGamesUpdated,
                 j.TotalGamesSkipped,
@@ -203,9 +212,13 @@ public class ImportController : ControllerBase
                 j.EgsUpdated,
                 j.EgsSkipped,
                 j.EgsFailed,
+                j.RequestedLimit,
+                j.RequestedIgdbGameIds,
+                j.RequestedOverwriteExisting,
                 j.StartedAt,
                 j.CompletedAt,
                 j.ErrorMessage,
+                j.WarningMessage,
                 duration = j.CompletedAt.HasValue
                     ? j.CompletedAt.Value.Subtract(j.StartedAt).TotalSeconds
                     : DateTime.UtcNow.Subtract(j.StartedAt).TotalSeconds
@@ -292,4 +305,7 @@ public class ImportController : ControllerBase
                 : null
         });
     }
+
+    private static string? NormalizeStatusQuery(string? status) =>
+        status?.Replace("_", "", StringComparison.Ordinal);
 }

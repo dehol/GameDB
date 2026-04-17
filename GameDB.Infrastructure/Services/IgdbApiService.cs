@@ -111,13 +111,9 @@ public class IgdbApiService : IIgdbApiService
                 if (includeIgdbIds != null && !includeIgdbIds.Contains(raw.Id)) continue;
 
                 var game = MapGame(raw);
-                // Only include games available on at least one store
-                if (game.SteamUrl != null || game.GogUrl != null || game.EgsUrl != null)
-                {
-                    result.Add(game);
-                    if (maxGames.HasValue && result.Count >= maxGames.Value)
-                        break;
-                }
+                result.Add(game);
+                if (maxGames.HasValue && result.Count >= maxGames.Value)
+                    break;
             }
 
             if (maxGames.HasValue && result.Count >= maxGames.Value)
@@ -131,7 +127,7 @@ public class IgdbApiService : IIgdbApiService
             await Task.Delay(300, ct);
         }
 
-        _logger.LogInformation("📥 IGDB: {Count} PC games with store links fetched", result.Count);
+        _logger.LogInformation("📥 IGDB: {Count} PC games fetched", result.Count);
         return result;
     }
 

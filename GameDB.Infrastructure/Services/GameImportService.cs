@@ -70,6 +70,19 @@ public class GameImportService
         job.LastUpdatedAt = DateTime.UtcNow;
         await _db.SaveChangesAsync(ct);
 
+        if (enriched.Count == 0)
+        {
+            job.Status = ImportJobStatus.CompletedWithWarnings;
+            job.CompletedAt = DateTime.UtcNow;
+            job.LastUpdatedAt = DateTime.UtcNow;
+            job.CurrentPhase = "completed_with_warnings";
+            job.WarningMessage = BuildNoEligibleWarningMessage(job);
+            await _db.SaveChangesAsync(ct);
+
+            _logger.LogWarning("Import completed with warnings: {Warning}", job.WarningMessage);
+            return;
+        }
+
         await ImportToDatabaseAsync(enriched, job, options, ct);
         await ThrowIfCancelledAsync(job, ct);
 
@@ -88,64 +101,106 @@ public class GameImportService
 
     private async Task<List<GameImport>> CollectFromIgdbAsync(ImportJob job, ImportPipelineOptions options, CancellationToken ct)
     {
-        // Skip already imported IGDB IDs
-        var existingIgdbIds = (await _db.Games
-            .AsNoTracking()
-            .Where(g => g.RawgId != null) // reusing RawgId column for IGDB ID
-            .Select(g => g.RawgId!.Value)
-            .ToListAsync(ct))
-            .ToHashSet();
-
         var includeIgdbIds = options.IgdbGameIds is { Count: > 0 }
             ? options.IgdbGameIds.ToHashSet()
             : null;
-        var excludeIgdbIds = options.OverwriteExisting ? null : existingIgdbIds;
 
         var igdbGames = await _igdb.GetPcGamesAsync(
-            excludeIgdbIds: excludeIgdbIds,
             includeIgdbIds: includeIgdbIds,
             maxGames: options.Limit,
             ct: ct);
 
-        var imports = igdbGames.Select(g => new GameImport
-        {
-            Title           = g.Name,
-            NormalizedTitle = NormalizeTitle(g.Name),
-            Description     = g.Summary,
-            ReleaseDate     = g.FirstReleaseDate.HasValue
-                ? DateOnly.FromDateTime(DateTimeOffset
-                    .FromUnixTimeSeconds(g.FirstReleaseDate.Value).DateTime)
-                : null,
-            Developer  = g.Developer,
-            Publisher  = g.Publisher,
-            Genres     = g.Genres,
-            RawgId     = g.Id,
-            Offers     = BuildOffers(g),
-            Rating     = g.Rating,
-            RatingCount = g.RatingCount,
-            IsDlc = g.IsDlc
-        }).Where(g => !string.IsNullOrEmpty(g.NormalizedTitle)).ToList();
+        job.IgdbCollected = igdbGames.Count;
 
-        // Filter out games with no store offers
-        var gamesWithOffers = imports.Where(i => i.Offers.Count > 0).ToList();
-        var skippedCount = imports.Count - gamesWithOffers.Count;
-        if (skippedCount > 0)
+        var candidateImports = new List<GameImport>();
+        var normalizedTitleSet = new HashSet<string>(StringComparer.Ordinal);
+
+        foreach (var game in igdbGames)
         {
-            _logger.LogInformation("IGDB: Skipped {Count} games with no store offers (Steam/GOG/EGS)", skippedCount);
+            var normalizedTitle = NormalizeTitle(game.Name);
+            if (string.IsNullOrEmpty(normalizedTitle))
+                continue;
+
+            var offers = BuildOffers(game);
+            var hasAnyStoreUrl =
+                !string.IsNullOrWhiteSpace(game.SteamUrl) ||
+                !string.IsNullOrWhiteSpace(game.GogUrl) ||
+                !string.IsNullOrWhiteSpace(game.EgsUrl);
+
+            if (offers.Count == 0)
+            {
+                if (hasAnyStoreUrl)
+                    job.SkippedInvalidStoreIds++;
+                else
+                    job.SkippedNoStoreOffers++;
+                continue;
+            }
+
+            if (!normalizedTitleSet.Add(normalizedTitle))
+            {
+                job.SkippedDuplicateTitles++;
+                continue;
+            }
+
+            candidateImports.Add(new GameImport
+            {
+                Title = game.Name,
+                NormalizedTitle = normalizedTitle,
+                Description = game.Summary,
+                ReleaseDate = game.FirstReleaseDate.HasValue
+                    ? DateOnly.FromDateTime(DateTimeOffset
+                        .FromUnixTimeSeconds(game.FirstReleaseDate.Value).DateTime)
+                    : null,
+                Developer = game.Developer,
+                Publisher = game.Publisher,
+                Genres = game.Genres,
+                RawgId = game.Id,
+                Offers = offers,
+                Rating = game.Rating,
+                RatingCount = game.RatingCount,
+                IsDlc = game.IsDlc
+            });
         }
 
-        _logger.LogInformation("IGDB: {Count} games collected for import", gamesWithOffers.Count);
-        var gamesWithGenres = gamesWithOffers.Where(i => i.Genres.Count > 0).ToList();
-        _logger.LogInformation("IGDB: {Count} games have genres", gamesWithGenres.Count);
-        foreach (var import in gamesWithGenres.Take(5)) // Log first 5
+        var imports = candidateImports;
+        if (!options.OverwriteExisting)
         {
+            var idsToCheck = imports
+                .Where(i => i.RawgId.HasValue)
+                .Select(i => i.RawgId!.Value);
+            var existingIds = await GetExistingRawgIdsAsync(idsToCheck, ct);
+            imports = imports.Where(i =>
+            {
+                if (!i.RawgId.HasValue) return true;
+                if (existingIds.Contains(i.RawgId.Value))
+                {
+                    job.SkippedAlreadyImported++;
+                    return false;
+                }
+
+                return true;
+            }).ToList();
+        }
+
+        if (options.Limit is > 0)
+            imports = imports.Take(options.Limit.Value).ToList();
+
+        job.EligibleForImport = imports.Count;
+
+        _logger.LogInformation(
+            "IGDB: collected={Collected}, eligible={Eligible}, skipped(no_offers={NoOffers}, invalid_store_ids={InvalidStoreIds}, already_imported={AlreadyImported}, duplicate_titles={DuplicateTitles})",
+            job.IgdbCollected, job.EligibleForImport, job.SkippedNoStoreOffers, job.SkippedInvalidStoreIds, job.SkippedAlreadyImported, job.SkippedDuplicateTitles);
+
+        var gamesWithGenres = imports.Where(i => i.Genres.Count > 0).ToList();
+        _logger.LogInformation("IGDB: {Count} eligible games have genres", gamesWithGenres.Count);
+        foreach (var import in gamesWithGenres.Take(5))
             _logger.LogInformation("Game '{Title}' genres: {Genres}", import.Title, string.Join(", ", import.Genres));
-        }
-        job.GogTotal = gamesWithOffers.Count(g => g.Offers.Any(o => o.ShopId == ShopConstants.Gog));
-        job.EgsTotal = gamesWithOffers.Count(g => g.Offers.Any(o => o.ShopId == ShopConstants.EpicGames));
+
+        job.GogTotal = imports.Count(g => g.Offers.Any(o => o.ShopId == ShopConstants.Gog));
+        job.EgsTotal = imports.Count(g => g.Offers.Any(o => o.ShopId == ShopConstants.EpicGames));
         await _db.SaveChangesAsync(ct);
 
-        return gamesWithOffers;
+        return imports;
     }
 
     private static List<GameOfferImport> BuildOffers(IgdbGame g)
@@ -319,11 +374,13 @@ public class GameImportService
             existingGames.Count, existingGameGenreSet.Count);
 
         var externalIds = games
-            .SelectMany(g => g.Offers.Select(o => o.ExternalId))
+            .SelectMany(g => g.Offers
+                .Where(o => !string.IsNullOrWhiteSpace(o.ExternalId))
+                .Select(o => o.ExternalId!))
             .Distinct().ToList();
 
         var existingOffers = await _db.GameOffers.AsNoTracking()
-            .Where(o => externalIds.Contains(o.ExternalId))
+            .Where(o => o.ExternalId != null && externalIds.Contains(o.ExternalId))
             .ToDictionaryAsync(o => $"{o.ShopId}:{o.ExternalId}", ct);
 
         var newGames       = new List<Game>();
@@ -719,6 +776,31 @@ public class GameImportService
             .Where(c => char.IsLetterOrDigit(c) || c == ' ').ToArray())
             .Trim().Replace("  ", " ");
     }
+
+    private async Task<HashSet<int>> GetExistingRawgIdsAsync(IEnumerable<int> ids, CancellationToken ct)
+    {
+        var distinctIds = ids.Distinct().ToArray();
+        var existing = new HashSet<int>();
+        foreach (var chunk in distinctIds.Chunk(500))
+        {
+            var chunkMatches = await _db.Games
+                .AsNoTracking()
+                .Where(g => g.RawgId.HasValue && chunk.Contains(g.RawgId.Value))
+                .Select(g => g.RawgId!.Value)
+                .ToListAsync(ct);
+            foreach (var id in chunkMatches)
+                existing.Add(id);
+        }
+
+        return existing;
+    }
+
+    private static string BuildNoEligibleWarningMessage(ImportJob job) =>
+        $"No eligible games to import. Collected: {job.IgdbCollected}, " +
+        $"Skipped already imported: {job.SkippedAlreadyImported}, " +
+        $"Skipped no store offers: {job.SkippedNoStoreOffers}, " +
+        $"Skipped invalid store IDs: {job.SkippedInvalidStoreIds}, " +
+        $"Skipped duplicate titles: {job.SkippedDuplicateTitles}.";
 
     private sealed class ImportCounters
     {

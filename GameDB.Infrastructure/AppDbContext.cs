@@ -76,6 +76,8 @@ public class AppDbContext : DbContext
             .HasIndex(g => g.Title);
         mb.Entity<Game>()
             .HasIndex(g => g.NormalizedTitle);
+        mb.Entity<Game>()
+            .HasIndex(g => g.RawgId);
         mb.Entity<User>()
             .HasIndex(u => u.IsGuest);
         mb.Entity<Wishlist>()

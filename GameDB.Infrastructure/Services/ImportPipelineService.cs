@@ -58,6 +58,8 @@ public class ImportPipelineService : IPipelineService
                 "Wait for it to complete or cancel it first.");
         }
 
+        var normalizedOptions = NormalizeOptions(options);
+
         // Create new job record
         var job = new ImportJob
         {
@@ -65,7 +67,12 @@ public class ImportPipelineService : IPipelineService
             CurrentPhase = "initializing",
             StartedAt = DateTime.UtcNow,
             LastUpdatedAt = DateTime.UtcNow,
-            IsSteamCatalogImport = false
+            IsSteamCatalogImport = false,
+            RequestedLimit = normalizedOptions.Limit,
+            RequestedIgdbGameIds = normalizedOptions.IgdbGameIds == null
+                ? null
+                : string.Join(",", normalizedOptions.IgdbGameIds),
+            RequestedOverwriteExisting = normalizedOptions.OverwriteExisting
         };
 
         db.ImportJobs.Add(job);
@@ -75,7 +82,6 @@ public class ImportPipelineService : IPipelineService
         _logger.LogInformation("Created import pipeline {PipelineId}", pipelineId);
 
         // Send to channel for processing
-        var normalizedOptions = NormalizeOptions(options);
 
         if (!_pipelineChannel.Writer.TryWrite(new ImportPipelineWorkItem(pipelineId, normalizedOptions)))
         {
@@ -101,7 +107,7 @@ public class ImportPipelineService : IPipelineService
 
         return new PipelineStatus(
             PipelineId: job.ImportJobId,
-            Status: job.Status.ToString().ToLowerInvariant(),
+            Status: ToApiStatus(job.Status),
             Phase: job.CurrentPhase,
             TotalGames: job.SteamTotal,
             ProcessedGames: job.TotalGamesCreated + job.TotalGamesUpdated + job.TotalGamesSkipped + job.TotalGamesFailed,
@@ -114,10 +120,20 @@ public class ImportPipelineService : IPipelineService
             SkippedOffers: job.TotalOffersSkipped,
             FailedOffers: job.TotalOffersFailed,
             ErrorCount: job.ErrorCount,
+            IgdbCollected: job.IgdbCollected,
+            EligibleForImport: job.EligibleForImport,
+            SkippedAlreadyImported: job.SkippedAlreadyImported,
+            SkippedNoStoreOffers: job.SkippedNoStoreOffers,
+            SkippedInvalidStoreIds: job.SkippedInvalidStoreIds,
+            SkippedDuplicateTitles: job.SkippedDuplicateTitles,
+            RequestedLimit: job.RequestedLimit,
+            RequestedIgdbGameIds: ParseRequestedIgdbGameIds(job.RequestedIgdbGameIds),
+            RequestedOverwriteExisting: job.RequestedOverwriteExisting,
             StartedAt: job.StartedAt,
             LastUpdatedAt: job.LastUpdatedAt,
             CompletedAt: job.CompletedAt,
             ErrorMessage: job.ErrorMessage,
+            WarningMessage: job.WarningMessage,
             Steam: new PipelineStoreStatus(
                 Total: job.SteamTotal,
                 Processed: job.SteamProcessed,
@@ -243,6 +259,24 @@ public class ImportPipelineService : IPipelineService
             Limit: limit,
             IgdbGameIds: igdbGameIds,
             OverwriteExisting: options.OverwriteExisting);
+    }
+
+    private static string ToApiStatus(ImportJobStatus status) => status switch
+    {
+        ImportJobStatus.CompletedWithWarnings => "completed_with_warnings",
+        _ => status.ToString().ToLowerInvariant()
+    };
+
+    private static List<int>? ParseRequestedIgdbGameIds(string? csv)
+    {
+        if (string.IsNullOrWhiteSpace(csv)) return null;
+        var parsed = csv
+            .Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+            .Select(s => int.TryParse(s, out var id) ? id : 0)
+            .Where(id => id > 0)
+            .Distinct()
+            .ToList();
+        return parsed.Count == 0 ? null : parsed;
     }
 }
 
