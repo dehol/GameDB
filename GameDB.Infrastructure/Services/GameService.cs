@@ -62,12 +62,29 @@ public class GameService
         // Count before pagination
         var totalCount = await query.CountAsync();
 
+        // Weighted rating baseline for "Top Rated" sorting
+        const int bayesianPriorVotes = 100;
+        var globalAverageRating = 0d;
+        if (string.Equals(sortBy, "rating", StringComparison.OrdinalIgnoreCase))
+        {
+            globalAverageRating = await query
+                .Where(g => g.rating > 0 && (g.rating_count ?? 0) > 0)
+                .Select(g => g.rating ?? 0d)
+                .DefaultIfEmpty(0d)
+                .AverageAsync();
+        }
+
         // Apply sorting
         query = sortBy?.ToLower() switch
         {
             "rating" => query
-                .Where(g => g.rating > 0)  // Only games with rating
-                .OrderByDescending(g => g.rating),
+                .OrderByDescending(g =>
+                    (g.rating ?? 0) > 0 && (g.rating_count ?? 0) > 0
+                        ? ((((g.rating_count ?? 0) * (g.rating ?? 0d)) + (bayesianPriorVotes * globalAverageRating))
+                            / ((g.rating_count ?? 0) + bayesianPriorVotes))
+                        : 0d)
+                .ThenByDescending(g => g.rating_count ?? 0)
+                .ThenByDescending(g => g.rating ?? 0),
             "price_asc" => query.OrderBy(g => g.min_price ?? decimal.MaxValue),
             "price_desc" => query.OrderByDescending(g => g.min_price ?? 0),
             "discount" => query.OrderByDescending(g => g.max_discount ?? 0),
