@@ -95,8 +95,9 @@ public class GameImportWorker : BackgroundService
     private static async Task MarkJobCancelledAsync(ImportJob job, AppDbContext db, CancellationToken ct)
     {
         job.Status = ImportJobStatus.Cancelled;
-        job.CompletedAt = DateTime.UtcNow;
-        job.ErrorMessage = "Operation cancelled";
+        job.LastUpdatedAt = DateTime.UtcNow;
+        job.CompletedAt ??= DateTime.UtcNow;
+        job.ErrorMessage ??= "Operation cancelled";
         await db.SaveChangesAsync(ct);
     }
 
@@ -104,6 +105,7 @@ public class GameImportWorker : BackgroundService
     {
         job.Status = ImportJobStatus.Failed;
         job.CompletedAt = DateTime.UtcNow;
+        job.LastUpdatedAt = DateTime.UtcNow;
         job.ErrorMessage = $"{ex.GetType().Name}: {ex.Message}";
         await db.SaveChangesAsync(ct);
     }

@@ -47,12 +47,15 @@ public class GameImportService
     {
         job.Status = ImportJobStatus.Running;
         job.CurrentPhase = "collecting";
+        job.LastUpdatedAt = DateTime.UtcNow;
         await _db.SaveChangesAsync(ct);
 
+        await ThrowIfCancelledAsync(job, ct);
         var games = await CollectFromIgdbAsync(job, options, ct);
         job.SteamTotal = games.Count;
+        job.LastUpdatedAt = DateTime.UtcNow;
 
-        if (ct.IsCancellationRequested) return;
+        await ThrowIfCancelledAsync(job, ct);
 
         job.CurrentPhase = "enriching_prices";
         await _db.SaveChangesAsync(ct);
@@ -61,15 +64,18 @@ public class GameImportService
         _logger.LogInformation("Skipping Steam price enrichment - will be synced separately");
         var enriched = games;
 
-        if (ct.IsCancellationRequested) return;
+        await ThrowIfCancelledAsync(job, ct);
 
         job.CurrentPhase = "importing";
+        job.LastUpdatedAt = DateTime.UtcNow;
         await _db.SaveChangesAsync(ct);
 
         await ImportToDatabaseAsync(enriched, job, options, ct);
+        await ThrowIfCancelledAsync(job, ct);
 
         job.Status = ImportJobStatus.Completed;
         job.CompletedAt = DateTime.UtcNow;
+        job.LastUpdatedAt = DateTime.UtcNow;
         job.CurrentPhase = "completed";
         await _db.SaveChangesAsync(ct);
 
@@ -135,6 +141,10 @@ public class GameImportService
         {
             _logger.LogInformation("Game '{Title}' genres: {Genres}", import.Title, string.Join(", ", import.Genres));
         }
+        job.GogTotal = gamesWithOffers.Count(g => g.Offers.Any(o => o.ShopId == ShopConstants.Gog));
+        job.EgsTotal = gamesWithOffers.Count(g => g.Offers.Any(o => o.ShopId == ShopConstants.EpicGames));
+        await _db.SaveChangesAsync(ct);
+
         return gamesWithOffers;
     }
 
@@ -321,18 +331,29 @@ public class GameImportService
         var newOffers      = new List<GameOffer>();
         var offersToUpdate = new List<GameOffer>();
         var newGameGenres  = new List<GameGenre>();
+        var counters = new ImportCounters();
+        var processedSinceSave = 0;
 
         foreach (var import in games)
         {
             try
             {
+                await ThrowIfCancelledAsync(job, ct);
                 if (string.IsNullOrEmpty(import.NormalizedTitle)) continue;
+                counters.GamesProcessed++;
+                IncrementStoreProcessed(import, counters);
 
                 if (existingGames.TryGetValue(import.NormalizedTitle, out var existing))
                 {
                     if (!options.OverwriteExisting)
                     {
                         _logger.LogDebug("Skipping existing game '{Title}' - OverwriteExisting is false", import.Title);
+                        counters.GamesSkipped++;
+                        counters.OffersSkipped += import.Offers.Count;
+                        IncrementStoreSkipped(import, counters);
+                        processedSinceSave++;
+                        await PersistProgressIfNeededAsync(job, counters, processedSinceSave, ct);
+                        if (processedSinceSave >= 25) processedSinceSave = 0;
                         continue;
                     }
 
@@ -376,10 +397,13 @@ public class GameImportService
                     }
 
                     if (needsUpdate)
-                    { existing.UpdatedAt = DateTime.UtcNow; gamesToUpdate.Add(existing); }
+                    {
+                        existing.UpdatedAt = DateTime.UtcNow;
+                        gamesToUpdate.Add(existing);
+                        counters.GamesUpdated++;
+                    }
 
-                    ProcessOffers(existing.GameId, import.Offers,
-                        existingOffers, newOffers, offersToUpdate);
+                    ProcessOffers(existing.GameId, import.Offers, existingOffers, newOffers, offersToUpdate, counters);
                 }
                 else
                 {
@@ -400,20 +424,35 @@ public class GameImportService
                     };
 
                     newGames.Add(game);
+                    counters.GamesCreated++;
                     existingGames[game.NormalizedTitle!] = game;
                 }
             }
             catch (Exception ex)
-            { _logger.LogWarning(ex, "Failed: {Title}", import.Title); job.ErrorCount++; }
+            {
+                _logger.LogWarning(ex, "Failed: {Title}", import.Title);
+                counters.GamesFailed++;
+                counters.Errors++;
+                counters.OffersFailed += import.Offers.Count;
+                IncrementStoreFailed(import, counters);
+            }
+
+            processedSinceSave++;
+            await PersistProgressIfNeededAsync(job, counters, processedSinceSave, ct);
+            if (processedSinceSave >= 25) processedSinceSave = 0;
         }
 
         if (newGames.Count > 0)
         {
             var bulkConfig = new BulkConfig { SetOutputIdentity = true };
             await _db.BulkInsertAsync(newGames, bulkConfig, cancellationToken: ct);
-            job.TotalGamesCreated = newGames.Count;
 
             // Rebuild existingGames with the new GameIds after bulk insert
+            var newNormalizedTitles = newGames
+                .Where(g => !string.IsNullOrEmpty(g.NormalizedTitle))
+                .Select(g => g.NormalizedTitle!)
+                .ToHashSet();
+
             foreach (var game in newGames)
             {
                 if (!string.IsNullOrEmpty(game.NormalizedTitle))
@@ -451,8 +490,8 @@ public class GameImportService
                     _logger.LogInformation("Added {Count} new genres for game '{Title}' (GameId={GameId})", genreCount, import.Title, game.GameId);
                 }
 
-                ProcessOffers(game.GameId, import.Offers,
-                    existingOffers, newOffers, offersToUpdate);
+                if (newNormalizedTitles.Contains(import.NormalizedTitle))
+                    ProcessOffers(game.GameId, import.Offers, existingOffers, newOffers, offersToUpdate, counters);
             }
         }
 
@@ -493,10 +532,12 @@ public class GameImportService
             }
             
             await _db.BulkInsertAsync(distinctOffers, cancellationToken: ct);
-            job.TotalOffersCreated = distinctOffers.Count;
         }
         if (offersToUpdate.Count > 0) await _db.BulkUpdateAsync(offersToUpdate, cancellationToken: ct);
 
+        SyncCounters(job, counters);
+        job.LastUpdatedAt = DateTime.UtcNow;
+        await _db.SaveChangesAsync(ct);
         _cache.Clear();
     }
 
@@ -505,7 +546,8 @@ public class GameImportService
         List<GameOfferImport> imports,
         Dictionary<string, GameOffer> existingOffers,
         List<GameOffer> newOffers,
-        List<GameOffer> offersToUpdate)
+        List<GameOffer> offersToUpdate,
+        ImportCounters counters)
     {
         foreach (var import in imports)
         {
@@ -522,6 +564,13 @@ public class GameImportService
                     existing.CurrentDiscount = import.CurrentDiscount ?? 0;
                     existing.PriceSyncedAt   = DateTime.UtcNow;
                     offersToUpdate.Add(existing);
+                    counters.OffersUpdated++;
+                    IncrementStoreUpdated(import.ShopId, counters);
+                }
+                else
+                {
+                    counters.OffersSkipped++;
+                    IncrementStoreSkipped(import.ShopId, counters);
                 }
             }
             else
@@ -539,8 +588,109 @@ public class GameImportService
                 };
                 newOffers.Add(offer);
                 existingOffers[key] = offer;
+                counters.OffersCreated++;
+                IncrementStoreNew(import.ShopId, counters);
             }
         }
+    }
+
+    private async Task ThrowIfCancelledAsync(ImportJob job, CancellationToken ct)
+    {
+        ct.ThrowIfCancellationRequested();
+
+        var status = await _db.ImportJobs
+            .Where(j => j.ImportJobId == job.ImportJobId)
+            .Select(j => j.Status)
+            .FirstOrDefaultAsync(ct);
+
+        if (status == ImportJobStatus.Cancelled)
+            throw new OperationCanceledException("Import pipeline was cancelled");
+    }
+
+    private async Task PersistProgressIfNeededAsync(
+        ImportJob job,
+        ImportCounters counters,
+        int processedSinceSave,
+        CancellationToken ct)
+    {
+        if (processedSinceSave < 25) return;
+        SyncCounters(job, counters);
+        job.LastUpdatedAt = DateTime.UtcNow;
+        await _db.SaveChangesAsync(ct);
+    }
+
+    private static void SyncCounters(ImportJob job, ImportCounters c)
+    {
+        job.SteamProcessed = c.GamesProcessed;
+        job.TotalGamesCreated = c.GamesCreated;
+        job.TotalGamesUpdated = c.GamesUpdated;
+        job.TotalGamesSkipped = c.GamesSkipped;
+        job.TotalGamesFailed = c.GamesFailed;
+        job.TotalOffersCreated = c.OffersCreated;
+        job.TotalOffersUpdated = c.OffersUpdated;
+        job.TotalOffersSkipped = c.OffersSkipped;
+        job.TotalOffersFailed = c.OffersFailed;
+        job.ErrorCount = c.Errors;
+        job.SteamImported = c.SteamNew;
+        job.SteamUpdated = c.SteamUpdated;
+        job.SteamSkipped = c.SteamSkipped;
+        job.SteamFailed = c.SteamFailed;
+        job.GogImported = c.GogNew;
+        job.GogUpdated = c.GogUpdated;
+        job.GogSkipped = c.GogSkipped;
+        job.GogFailed = c.GogFailed;
+        job.EgsImported = c.EgsNew;
+        job.EgsUpdated = c.EgsUpdated;
+        job.EgsSkipped = c.EgsSkipped;
+        job.EgsFailed = c.EgsFailed;
+        job.GogProcessed = c.GogProcessed;
+        job.EgsProcessed = c.EgsProcessed;
+    }
+
+    private static void IncrementStoreProcessed(GameImport import, ImportCounters counters)
+    {
+        foreach (var offer in import.Offers)
+        {
+            if (offer.ShopId == ShopConstants.Gog) counters.GogProcessed++;
+            else if (offer.ShopId == ShopConstants.EpicGames) counters.EgsProcessed++;
+        }
+    }
+
+    private static void IncrementStoreSkipped(GameImport import, ImportCounters counters)
+    {
+        foreach (var offer in import.Offers)
+            IncrementStoreSkipped(offer.ShopId, counters);
+    }
+
+    private static void IncrementStoreFailed(GameImport import, ImportCounters counters)
+    {
+        foreach (var offer in import.Offers)
+        {
+            if (offer.ShopId == ShopConstants.Steam) counters.SteamFailed++;
+            else if (offer.ShopId == ShopConstants.Gog) counters.GogFailed++;
+            else if (offer.ShopId == ShopConstants.EpicGames) counters.EgsFailed++;
+        }
+    }
+
+    private static void IncrementStoreNew(int shopId, ImportCounters counters)
+    {
+        if (shopId == ShopConstants.Steam) counters.SteamNew++;
+        else if (shopId == ShopConstants.Gog) counters.GogNew++;
+        else if (shopId == ShopConstants.EpicGames) counters.EgsNew++;
+    }
+
+    private static void IncrementStoreUpdated(int shopId, ImportCounters counters)
+    {
+        if (shopId == ShopConstants.Steam) counters.SteamUpdated++;
+        else if (shopId == ShopConstants.Gog) counters.GogUpdated++;
+        else if (shopId == ShopConstants.EpicGames) counters.EgsUpdated++;
+    }
+
+    private static void IncrementStoreSkipped(int shopId, ImportCounters counters)
+    {
+        if (shopId == ShopConstants.Steam) counters.SteamSkipped++;
+        else if (shopId == ShopConstants.Gog) counters.GogSkipped++;
+        else if (shopId == ShopConstants.EpicGames) counters.EgsSkipped++;
     }
 
     // ── Helpers ───────────────────────────────────────────────────────────
@@ -553,5 +703,33 @@ public class GameImportService
             .Replace("™", "").Replace("®", "").Replace("©", "")
             .Where(c => char.IsLetterOrDigit(c) || c == ' ').ToArray())
             .Trim().Replace("  ", " ");
+    }
+
+    private sealed class ImportCounters
+    {
+        public int GamesProcessed { get; set; }
+        public int GamesCreated { get; set; }
+        public int GamesUpdated { get; set; }
+        public int GamesSkipped { get; set; }
+        public int GamesFailed { get; set; }
+        public int OffersCreated { get; set; }
+        public int OffersUpdated { get; set; }
+        public int OffersSkipped { get; set; }
+        public int OffersFailed { get; set; }
+        public int Errors { get; set; }
+        public int SteamNew { get; set; }
+        public int SteamUpdated { get; set; }
+        public int SteamSkipped { get; set; }
+        public int SteamFailed { get; set; }
+        public int GogNew { get; set; }
+        public int GogUpdated { get; set; }
+        public int GogSkipped { get; set; }
+        public int GogFailed { get; set; }
+        public int EgsNew { get; set; }
+        public int EgsUpdated { get; set; }
+        public int EgsSkipped { get; set; }
+        public int EgsFailed { get; set; }
+        public int GogProcessed { get; set; }
+        public int EgsProcessed { get; set; }
     }
 }

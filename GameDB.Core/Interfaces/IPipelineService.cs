@@ -44,10 +44,21 @@ public record PipelineStatus(
     int TotalGames,
     int ProcessedGames,
     int ImportedGames,
+    int UpdatedGames,
+    int SkippedGames,
+    int FailedGames,
+    int CreatedOffers,
+    int UpdatedOffers,
+    int SkippedOffers,
+    int FailedOffers,
     int ErrorCount,
     DateTime StartedAt,
+    DateTime LastUpdatedAt,
     DateTime? CompletedAt,
-    string? ErrorMessage
+    string? ErrorMessage,
+    PipelineStoreStatus Steam,
+    PipelineStoreStatus Gog,
+    PipelineStoreStatus Egs
 )
 {
     public double ProgressPercent => TotalGames > 0 
@@ -55,4 +66,22 @@ public record PipelineStatus(
         : 0;
     
     public TimeSpan? Duration => CompletedAt?.Subtract(StartedAt) ?? DateTime.UtcNow.Subtract(StartedAt);
+
+    public double? EtaSeconds =>
+        Status == "running" && ProcessedGames > 0 && TotalGames > ProcessedGames
+            ? Math.Round((Duration?.TotalSeconds ?? 0) / ProcessedGames * (TotalGames - ProcessedGames), 2)
+            : null;
+
+    public bool IsStale =>
+        Status is "pending" or "running" &&
+        DateTime.UtcNow.Subtract(LastUpdatedAt) > TimeSpan.FromMinutes(10);
 }
+
+public record PipelineStoreStatus(
+    int Total,
+    int Processed,
+    int New,
+    int Updated,
+    int Skipped,
+    int Failed
+);

@@ -94,11 +94,13 @@ public class ImportController : ControllerBase
     public async Task<IActionResult> Cancel(int pipelineId)
     {
         await _pipelineService.CancelPipelineAsync(pipelineId);
+        var status = await _pipelineService.GetPipelineStatusAsync(pipelineId);
         
         return Ok(new
         {
-            message = "Cancellation requested",
-            pipelineId
+            pipelineId,
+            status = status?.Status ?? "not_found",
+            message = status == null ? "Pipeline not found" : "Cancellation requested"
         });
     }
 
@@ -137,7 +139,9 @@ public class ImportController : ControllerBase
     public async Task<IActionResult> GetJobHistory(
         [FromQuery] int page = 1,
         [FromQuery] int pageSize = 20,
-        [FromQuery] string? status = null)
+        [FromQuery] string? status = null,
+        [FromQuery] DateTime? startedFrom = null,
+        [FromQuery] DateTime? startedTo = null)
     {
         // Validate parameters
         page = Math.Max(1, page);
@@ -150,6 +154,12 @@ public class ImportController : ControllerBase
         {
             query = query.Where(j => j.Status == statusEnum);
         }
+
+        if (startedFrom.HasValue)
+            query = query.Where(j => j.StartedAt >= startedFrom.Value);
+
+        if (startedTo.HasValue)
+            query = query.Where(j => j.StartedAt <= startedTo.Value);
 
         // Get total count
         var total = await query.CountAsync();
@@ -168,8 +178,31 @@ public class ImportController : ControllerBase
                 totalGames = j.SteamTotal,
                 processedGames = j.SteamProcessed,
                 j.TotalGamesCreated,
+                j.TotalGamesUpdated,
+                j.TotalGamesSkipped,
+                j.TotalGamesFailed,
                 j.TotalOffersCreated,
+                j.TotalOffersUpdated,
+                j.TotalOffersSkipped,
+                j.TotalOffersFailed,
                 j.ErrorCount,
+                j.LastUpdatedAt,
+                j.SteamImported,
+                j.SteamUpdated,
+                j.SteamSkipped,
+                j.SteamFailed,
+                j.GogTotal,
+                j.GogProcessed,
+                j.GogImported,
+                j.GogUpdated,
+                j.GogSkipped,
+                j.GogFailed,
+                j.EgsTotal,
+                j.EgsProcessed,
+                j.EgsImported,
+                j.EgsUpdated,
+                j.EgsSkipped,
+                j.EgsFailed,
                 j.StartedAt,
                 j.CompletedAt,
                 j.ErrorMessage,

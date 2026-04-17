@@ -93,4 +93,15 @@ export const api = {
   startImportPipeline: (options = {}) => request('/import/start', { method: 'POST', body: JSON.stringify(options) }),
   getImportPipelineStatus: (pipelineId) => request(`/import/status/${pipelineId}`),
   getCurrentImportPipeline: () => request('/import/current'),
+  cancelImportPipeline: (pipelineId) => request(`/import/cancel/${pipelineId}`, { method: 'POST' }),
+  getImportJobs: (params = {}) => {
+    const q = new URLSearchParams();
+    if (params.page) q.set('page', params.page);
+    if (params.pageSize) q.set('pageSize', params.pageSize);
+    if (params.status) q.set('status', params.status);
+    if (params.startedFrom) q.set('startedFrom', params.startedFrom);
+    if (params.startedTo) q.set('startedTo', params.startedTo);
+    const suffix = q.toString() ? `?${q.toString()}` : '';
+    return request(`/import/jobs${suffix}`);
+  },
 };
