@@ -12,6 +12,7 @@ public class AuthController : ControllerBase
 
     public record RegisterDto(string Username, string Email, string Password);
     public record LoginDto(string Email, string Password);
+    public record GuestLoginDto(string? DeviceId);
 
     [HttpPost("register")]
     public async Task<IActionResult> Register(RegisterDto dto)
@@ -35,6 +36,27 @@ public class AuthController : ControllerBase
             token = result.Value.token,
             username = result.Value.username,
             role = result.Value.role
+        });
+    }
+
+    [HttpPost("guest")]
+    public async Task<IActionResult> Guest(GuestLoginDto dto)
+    {
+        var deviceId = dto.DeviceId;
+        if (string.IsNullOrWhiteSpace(deviceId) && Request.Headers.TryGetValue("X-Device-Id", out var headerDeviceId))
+            deviceId = headerDeviceId.FirstOrDefault();
+
+        if (string.IsNullOrWhiteSpace(deviceId))
+            return BadRequest("Device ID is required");
+
+        var userAgent = Request.Headers.UserAgent.FirstOrDefault();
+        var result = await _auth.LoginGuestAsync(deviceId, string.IsNullOrWhiteSpace(userAgent) ? null : userAgent);
+        return Ok(new
+        {
+            token = result.token,
+            username = result.username,
+            role = result.role,
+            deviceId = result.deviceId
         });
     }
 }

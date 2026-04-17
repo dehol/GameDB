@@ -19,13 +19,14 @@ export default function ProfilePage() {
   };
 
   if (loading || !profile) return null;
+  const isGuest = profile.role?.toLowerCase() === 'guest';
 
   return (
     <div>
       <Card title="Profile">
         <Descriptions bordered column={1}>
           <Descriptions.Item label="Username">{profile.username}</Descriptions.Item>
-          <Descriptions.Item label="Email">{profile.email}</Descriptions.Item>
+          <Descriptions.Item label="Email">{profile.email || '—'}</Descriptions.Item>
           <Descriptions.Item label="Role">{profile.role}</Descriptions.Item>
           <Descriptions.Item label="Registered">{new Date(profile.createdAt).toLocaleDateString()}</Descriptions.Item>
           <Descriptions.Item label="Last Login">{profile.lastLogin ? new Date(profile.lastLogin).toLocaleDateString() : '—'}</Descriptions.Item>
@@ -44,18 +45,24 @@ export default function ProfilePage() {
         ) : <p>No shops linked yet.</p>}
       </Card>
 
-      <Card title="Link Shop Account" style={{ marginTop: 16 }}>
-        <Form onFinish={onLink} layout="inline">
-          <Form.Item name="shopId" rules={[{ required: true }]}>
-            <Select placeholder="Shop" style={{ width: 150 }}
-              options={[{ value: 1, label: 'Steam' }, { value: 2, label: 'GOG' }]} />
-          </Form.Item>
-          <Form.Item name="externalUid" rules={[{ required: true }]}>
-            <Input placeholder="External ID (Steam ID / GOG username)" style={{ width: 300 }} />
-          </Form.Item>
-          <Button type="primary" htmlType="submit">Link</Button>
-        </Form>
-      </Card>
+      {isGuest ? (
+        <Card title="Link Shop Account" style={{ marginTop: 16 }}>
+          <p>Guest accounts cannot link shop profiles.</p>
+        </Card>
+      ) : (
+        <Card title="Link Shop Account" style={{ marginTop: 16 }}>
+          <Form onFinish={onLink} layout="inline">
+            <Form.Item name="shopId" rules={[{ required: true }]}>
+              <Select placeholder="Shop" style={{ width: 150 }}
+                options={[{ value: 1, label: 'Steam' }, { value: 2, label: 'GOG' }]} />
+            </Form.Item>
+            <Form.Item name="externalUid" rules={[{ required: true }]}>
+              <Input placeholder="External ID (Steam ID / GOG username)" style={{ width: 300 }} />
+            </Form.Item>
+            <Button type="primary" htmlType="submit">Link</Button>
+          </Form>
+        </Card>
+      )}
     </div>
   );
 }

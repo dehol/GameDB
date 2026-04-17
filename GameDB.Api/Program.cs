@@ -35,6 +35,7 @@ builder.Services.AddScoped<WishlistService>();
 builder.Services.AddScoped<PriceSyncService>();
 builder.Services.AddScoped<ProfileService>();
 builder.Services.AddScoped<AlertService>();
+builder.Services.AddScoped<NotificationService>();
 builder.Services.AddScoped<LibraryService>();
 builder.Services.AddScoped<GameImportService>();
 builder.Services.AddScoped<ReferenceDataCache>();
@@ -98,6 +99,12 @@ builder.Services.AddCors(opt =>
         .AllowCredentials()));
 
 var app = builder.Build();
+
+using (var scope = app.Services.CreateScope())
+{
+    var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+    db.Database.Migrate();
+}
 
 app.UseCors();
 app.UseAuthentication();

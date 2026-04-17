@@ -46,6 +46,7 @@ public class WishlistController : ControllerBase
     }
 
     [HttpPost("import-steam")]
+    [Authorize(Roles = "user,admin")]
     public async Task<IActionResult> ImportSteam()
     {
         var (imported, error) = await _wishlist.ImportSteamAsync(GetUserId());

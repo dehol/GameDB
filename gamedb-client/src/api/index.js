@@ -1,14 +1,17 @@
 const API = import.meta.env.VITE_API_URL || 'http://localhost:5212/api';
 
-function headers() {
+function buildHeaders(extraHeaders = {}) {
   const token = localStorage.getItem('token');
-  const h = { 'Content-Type': 'application/json' };
-  if (token) h['Authorization'] = `Bearer ${token}`;
-  return h;
+  const headers = { 'Content-Type': 'application/json', ...extraHeaders };
+  if (token) headers.Authorization = `Bearer ${token}`;
+  return headers;
 }
 
 async function request(path, options = {}) {
-  const res = await fetch(`${API}${path}`, { headers: headers(), ...options });
+  const res = await fetch(`${API}${path}`, {
+    ...options,
+    headers: buildHeaders(options.headers || {}),
+  });
 
   if (res.status === 401) {
     localStorage.removeItem('token');
@@ -27,6 +30,7 @@ async function request(path, options = {}) {
   if (contentType.includes('application/json')) {
     return res.json();
   }
+
   const text = await res.text();
   return { message: text };
 }
@@ -34,6 +38,11 @@ async function request(path, options = {}) {
 export const api = {
   // Auth
   login: (data) => request('/auth/login', { method: 'POST', body: JSON.stringify(data) }),
+  loginGuest: (deviceId) => request('/auth/guest', {
+    method: 'POST',
+    headers: { 'X-Device-Id': deviceId },
+    body: JSON.stringify({ deviceId }),
+  }),
   register: (data) => request('/auth/register', { method: 'POST', body: JSON.stringify(data) }),
 
   // Games
@@ -70,6 +79,11 @@ export const api = {
   createAlert: (data) => request('/alerts', { method: 'POST', body: JSON.stringify(data) }),
   updateAlert: (id, data) => request(`/alerts/${id}`, { method: 'PUT', body: JSON.stringify(data) }),
   deleteAlert: (id) => request(`/alerts/${id}`, { method: 'DELETE' }),
+
+  // Notifications
+  getNotifications: () => request('/notifications'),
+  markNotificationRead: (id) => request(`/notifications/${id}/read`, { method: 'POST' }),
+  markAllNotificationsRead: () => request('/notifications/read-all', { method: 'POST' }),
 
   // Library
   getLibrary: () => request('/library'),

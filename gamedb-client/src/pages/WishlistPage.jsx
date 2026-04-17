@@ -2,8 +2,10 @@ import { useState, useEffect } from 'react';
 import { Table, Button, message, Popconfirm } from 'antd';
 import { DeleteOutlined, ImportOutlined } from '@ant-design/icons';
 import { api } from '../api';
+import { useAuth } from '../context/AuthContext';
 
 export default function WishlistPage() {
+  const { user } = useAuth();
   const [items, setItems] = useState([]);
   const [loading, setLoading] = useState(true);
   const [importing, setImporting] = useState(false);
@@ -48,7 +50,9 @@ export default function WishlistPage() {
     <div>
       <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 16 }}>
         <h2>My Wishlist</h2>
-        <Button icon={<ImportOutlined />} onClick={importSteam} loading={importing}>Import from Steam</Button>
+        {user?.role !== 'guest' && (
+          <Button icon={<ImportOutlined />} onClick={importSteam} loading={importing}>Import from Steam</Button>
+        )}
       </div>
       <Table dataSource={items} columns={columns} rowKey="gameId" loading={loading} />
     </div>

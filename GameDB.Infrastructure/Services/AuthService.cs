@@ -3,6 +3,7 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using Microsoft.IdentityModel.Tokens;
 using System.IdentityModel.Tokens.Jwt;
+using System.Security.Cryptography;
 using System.Security.Claims;
 using System.Text;
 
@@ -52,7 +53,7 @@ public class AuthService
             .Include(u => u.Role)
             .FirstOrDefaultAsync(u => u.Email == email);
 
-        if (user == null || !BCrypt.Net.BCrypt.Verify(password, user.PasswordHash))
+        if (user == null || string.IsNullOrWhiteSpace(user.PasswordHash) || !BCrypt.Net.BCrypt.Verify(password, user.PasswordHash))
             return null;
 
         user.LastLogin = DateTime.UtcNow;
@@ -60,6 +61,56 @@ public class AuthService
 
         var token = GenerateToken(user);
         return (token, user.Username, user.Role.RoleName);
+    }
+
+    public async Task<(string token, string username, string role, string deviceId)> LoginGuestAsync(string deviceId, string? userAgent)
+    {
+        if (string.IsNullOrWhiteSpace(deviceId))
+            throw new ArgumentException("Device ID is required", nameof(deviceId));
+
+        var deviceHash = HashDeviceId(deviceId);
+        var now = DateTime.UtcNow;
+
+        var existingSession = await _db.GuestSessions
+            .Include(s => s.User)
+            .ThenInclude(u => u.Role)
+            .Where(s => s.DeviceHash == deviceHash && s.RevokedAt == null)
+            .OrderByDescending(s => s.LastSeen)
+            .FirstOrDefaultAsync();
+
+        if (existingSession != null && existingSession.User.IsGuest)
+        {
+            existingSession.LastSeen = now;
+            existingSession.UserAgent = userAgent;
+            await _db.SaveChangesAsync();
+
+            var existingToken = GenerateToken(existingSession.User);
+            return (existingToken, existingSession.User.Username, existingSession.User.Role.RoleName, deviceId);
+        }
+
+        var guestRole = await _db.Roles.FirstAsync(r => r.RoleName == "guest");
+        var guestUser = new User
+        {
+            Username = await GenerateGuestUsernameAsync(),
+            IsGuest = true,
+            RoleId = guestRole.RoleId,
+            Role = guestRole
+        };
+
+        _db.Users.Add(guestUser);
+        await _db.SaveChangesAsync();
+
+        _db.GuestSessions.Add(new GuestSession
+        {
+            UserId = guestUser.UserId,
+            DeviceHash = deviceHash,
+            UserAgent = userAgent,
+            LastSeen = now
+        });
+        await _db.SaveChangesAsync();
+
+        var token = GenerateToken(guestUser);
+        return (token, guestUser.Username, guestRole.RoleName, deviceId);
     }
 
     private string GenerateToken(User user)
@@ -83,5 +134,23 @@ public class AuthService
         );
 
         return new JwtSecurityTokenHandler().WriteToken(token);
+    }
+
+    private static string HashDeviceId(string deviceId)
+    {
+        var bytes = SHA256.HashData(Encoding.UTF8.GetBytes(deviceId.Trim()));
+        return Convert.ToHexString(bytes);
+    }
+
+    private async Task<string> GenerateGuestUsernameAsync()
+    {
+        for (var i = 0; i < 5; i++)
+        {
+            var candidate = $"guest_{Guid.NewGuid():N}";
+            var exists = await _db.Users.AnyAsync(u => u.Username == candidate);
+            if (!exists) return candidate;
+        }
+
+        return $"guest_{Guid.NewGuid():N}_{DateTime.UtcNow.Ticks}";
     }
 }

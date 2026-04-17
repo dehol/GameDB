@@ -23,6 +23,8 @@ public class AppDbContext : DbContext
     public DbSet<Wishlist> Wishlists => Set<Wishlist>();
     public DbSet<Alert> Alerts => Set<Alert>();
     public DbSet<UserLibrary> UserLibraries => Set<UserLibrary>();
+    public DbSet<GuestSession> GuestSessions => Set<GuestSession>();
+    public DbSet<Notification> Notifications => Set<Notification>();
     public DbSet<ImportJob> ImportJobs => Set<ImportJob>();
     public DbSet<RawGameData> RawGameData => Set<RawGameData>();
     public DbSet<StagingGame> StagingGames => Set<StagingGame>();
@@ -44,6 +46,8 @@ public class AppDbContext : DbContext
         mb.Entity<Wishlist>().ToTable("Wishlist");
         mb.Entity<Alert>().ToTable("Alert");
         mb.Entity<UserLibrary>().ToTable("UserLibrary");
+        mb.Entity<GuestSession>().ToTable("GuestSession");
+        mb.Entity<Notification>().ToTable("Notification");
         mb.Entity<ImportJob>().ToTable("ImportJob");
         mb.Entity<RawGameData>().ToTable("RawGameData");
         mb.Entity<StagingGame>().ToTable("StagingGame");
@@ -72,6 +76,19 @@ public class AppDbContext : DbContext
             .HasIndex(g => g.Title);
         mb.Entity<Game>()
             .HasIndex(g => g.NormalizedTitle);
+        mb.Entity<User>()
+            .HasIndex(u => u.IsGuest);
+        mb.Entity<Wishlist>()
+            .HasIndex(w => new { w.UserId, w.AddedAt });
+        mb.Entity<Alert>()
+            .HasIndex(a => new { a.UserId, a.IsActive, a.TriggeredAt });
+        mb.Entity<GuestSession>()
+            .HasIndex(s => new { s.UserId, s.LastSeen });
+        mb.Entity<GuestSession>()
+            .HasIndex(s => s.DeviceHash)
+            .HasDatabaseName("IX_GuestSession_DeviceHash");
+        mb.Entity<Notification>()
+            .HasIndex(n => new { n.UserId, n.IsRead, n.CreatedAt });
 
         // PriceHistory index + explicit FK
         mb.Entity<PriceHistory>()
@@ -89,6 +106,18 @@ public class AppDbContext : DbContext
             .HasForeignKey(w => w.SourceShopId)
             .OnDelete(DeleteBehavior.SetNull);
 
+        mb.Entity<GuestSession>()
+            .HasOne(gs => gs.User)
+            .WithMany(u => u.GuestSessions)
+            .HasForeignKey(gs => gs.UserId)
+            .OnDelete(DeleteBehavior.Cascade);
+
+        mb.Entity<Notification>()
+            .HasOne(n => n.User)
+            .WithMany(u => u.Notifications)
+            .HasForeignKey(n => n.UserId)
+            .OnDelete(DeleteBehavior.Cascade);
+
         // CHECK constraints — GameOffer
         mb.Entity<GameOffer>()
             .ToTable(t => t.HasCheckConstraint("chk_price", "\"CurrentPrice\" >= 0"));
@@ -105,6 +134,10 @@ public class AppDbContext : DbContext
         mb.Entity<Alert>()
             .ToTable(t => t.HasCheckConstraint("chk_alert_discount",
                 "\"TargetDiscount\" IS NULL OR (\"TargetDiscount\" BETWEEN 1 AND 100)"));
+
+        mb.Entity<User>()
+            .ToTable(t => t.HasCheckConstraint("chk_user_guest_identity",
+                "\"IsGuest\" = FALSE OR (\"Email\" IS NULL AND \"PasswordHash\" IS NULL)"));
 
         // Staging tables indexes
         mb.Entity<RawGameData>()

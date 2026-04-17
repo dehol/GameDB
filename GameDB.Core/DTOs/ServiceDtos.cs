@@ -87,3 +87,11 @@ public record UserLibraryRow
     public decimal? purchase_store_price { get; init; }
     public DateTime AddedAt { get; init; }
 }
+
+public record NotificationItemDto(
+    int NotificationId,
+    string Type,
+    string? Payload,
+    bool IsRead,
+    DateTime CreatedAt
+);
