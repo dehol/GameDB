@@ -40,8 +40,22 @@ public class GameService
 
         query = contentType?.ToLowerInvariant() switch
         {
-            "games" => query.Where(g => !g.is_dlc),
-            "dlc" => query.Where(g => g.is_dlc),
+            "games" => query.Where(g =>
+                !g.is_dlc &&
+                !EF.Functions.ILike(g.Title, "% dlc%") &&
+                !EF.Functions.ILike(g.Title, "%map pack%") &&
+                !EF.Functions.ILike(g.Title, "%season pass%") &&
+                !EF.Functions.ILike(g.Title, "%soundtrack%") &&
+                !EF.Functions.ILike(g.Title, "% add-on%") &&
+                !EF.Functions.ILike(g.Title, "% addon%")),
+            "dlc" => query.Where(g =>
+                g.is_dlc ||
+                EF.Functions.ILike(g.Title, "% dlc%") ||
+                EF.Functions.ILike(g.Title, "%map pack%") ||
+                EF.Functions.ILike(g.Title, "%season pass%") ||
+                EF.Functions.ILike(g.Title, "%soundtrack%") ||
+                EF.Functions.ILike(g.Title, "% add-on%") ||
+                EF.Functions.ILike(g.Title, "% addon%")),
             _ => query
         };
 

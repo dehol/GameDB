@@ -257,7 +257,7 @@ public class IgdbApiService : IIgdbApiService
             EgsUrl            = egsUrl,
             Rating            = raw.Rating,
             RatingCount       = raw.RatingCount,
-            IsDlc             = raw.Category is 1 or 2 or 4,
+            IsDlc             = raw.Category is 1 or 2 or 4 or 13,
         };
     }
 
