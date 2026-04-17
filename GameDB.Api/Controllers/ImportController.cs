@@ -176,7 +176,7 @@ public class ImportController : ControllerBase
                 j.CurrentPhase,
                 j.IsSteamCatalogImport,
                 totalGames = j.SteamTotal,
-                processedGames = j.SteamProcessed,
+                processedGames = j.TotalGamesCreated + j.TotalGamesUpdated + j.TotalGamesSkipped + j.TotalGamesFailed,
                 j.TotalGamesCreated,
                 j.TotalGamesUpdated,
                 j.TotalGamesSkipped,

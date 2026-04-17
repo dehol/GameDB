@@ -104,7 +104,7 @@ public class ImportPipelineService : IPipelineService
             Status: job.Status.ToString().ToLowerInvariant(),
             Phase: job.CurrentPhase,
             TotalGames: job.SteamTotal,
-            ProcessedGames: job.SteamProcessed,
+            ProcessedGames: job.TotalGamesCreated + job.TotalGamesUpdated + job.TotalGamesSkipped + job.TotalGamesFailed,
             ImportedGames: job.TotalGamesCreated,
             UpdatedGames: job.TotalGamesUpdated,
             SkippedGames: job.TotalGamesSkipped,
@@ -216,7 +216,7 @@ public class ImportPipelineService : IPipelineService
 
     private static bool IsStale(ImportJob job)
     {
-        var heartbeat = job.LastUpdatedAt == default ? job.StartedAt : job.LastUpdatedAt;
+        var heartbeat = job.LastUpdatedAt.Ticks <= DateTime.UnixEpoch.Ticks ? job.StartedAt : job.LastUpdatedAt;
         return DateTime.UtcNow - heartbeat > StalePipelineTimeout;
     }
 

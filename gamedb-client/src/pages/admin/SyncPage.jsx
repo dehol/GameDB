@@ -176,18 +176,18 @@ export default function SyncPage() {
   };
 
   const retryLast = async () => {
-    const latest = history[0];
-    if (!latest) {
+    if (!history[0]) {
       message.warning('No previous import jobs');
       return;
     }
     setActionLoading('retry');
-    setImportOptions((prev) => ({
-      ...prev,
-      overwriteExisting: Boolean(latest.totalGamesUpdated > 0 || latest.totalOffersUpdated > 0),
-    }));
     await startImport();
     setActionLoading(null);
+  };
+
+  const applyFilter = async (status) => {
+    setFilters({ status });
+    await fetchHistory(1, pagination.pageSize, status);
   };
 
   const isHeartbeatStale = useMemo(() => {
@@ -397,10 +397,10 @@ export default function SyncPage() {
 
       <Card title="Import History">
         <Space style={{ marginBottom: 12 }}>
-          <Button onClick={() => { setFilters({ status: undefined }); fetchHistory(1, pagination.pageSize, undefined); }}>All</Button>
-          <Button onClick={() => { setFilters({ status: 'completed' }); fetchHistory(1, pagination.pageSize, 'completed'); }}>Completed</Button>
-          <Button onClick={() => { setFilters({ status: 'failed' }); fetchHistory(1, pagination.pageSize, 'failed'); }}>Failed</Button>
-          <Button onClick={() => { setFilters({ status: 'cancelled' }); fetchHistory(1, pagination.pageSize, 'cancelled'); }}>Cancelled</Button>
+          <Button onClick={() => applyFilter(undefined)}>All</Button>
+          <Button onClick={() => applyFilter('completed')}>Completed</Button>
+          <Button onClick={() => applyFilter('failed')}>Failed</Button>
+          <Button onClick={() => applyFilter('cancelled')}>Cancelled</Button>
         </Space>
         <Table
           rowKey="importJobId"

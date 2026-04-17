@@ -621,7 +621,7 @@ public class GameImportService
 
     private static void SyncCounters(ImportJob job, ImportCounters c)
     {
-        job.SteamProcessed = c.GamesProcessed;
+        job.SteamProcessed = c.SteamProcessed;
         job.TotalGamesCreated = c.GamesCreated;
         job.TotalGamesUpdated = c.GamesUpdated;
         job.TotalGamesSkipped = c.GamesSkipped;
@@ -651,7 +651,8 @@ public class GameImportService
     {
         foreach (var offer in import.Offers)
         {
-            if (offer.ShopId == ShopConstants.Gog) counters.GogProcessed++;
+            if (offer.ShopId == ShopConstants.Steam) counters.SteamProcessed++;
+            else if (offer.ShopId == ShopConstants.Gog) counters.GogProcessed++;
             else if (offer.ShopId == ShopConstants.EpicGames) counters.EgsProcessed++;
         }
     }
@@ -718,6 +719,7 @@ public class GameImportService
         public int OffersFailed { get; set; }
         public int Errors { get; set; }
         public int SteamNew { get; set; }
+        public int SteamProcessed { get; set; }
         public int SteamUpdated { get; set; }
         public int SteamSkipped { get; set; }
         public int SteamFailed { get; set; }
