@@ -91,7 +91,7 @@ public class AuthService
         var guestRole = await _db.Roles.FirstAsync(r => r.RoleName == "guest");
         var guestUser = new User
         {
-            Username = $"guest_{Guid.NewGuid():N}"[..14],
+            Username = await GenerateGuestUsernameAsync(),
             IsGuest = true,
             RoleId = guestRole.RoleId,
             Role = guestRole
@@ -140,5 +140,17 @@ public class AuthService
     {
         var bytes = SHA256.HashData(Encoding.UTF8.GetBytes(deviceId.Trim()));
         return Convert.ToHexString(bytes);
+    }
+
+    private async Task<string> GenerateGuestUsernameAsync()
+    {
+        for (var i = 0; i < 5; i++)
+        {
+            var candidate = $"guest_{Guid.NewGuid():N}";
+            var exists = await _db.Users.AnyAsync(u => u.Username == candidate);
+            if (!exists) return candidate;
+        }
+
+        return $"guest_{Guid.NewGuid():N}_{DateTime.UtcNow.Ticks}";
     }
 }

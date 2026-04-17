@@ -41,8 +41,11 @@ export default function LoginPage() {
   const onGuestLogin = async () => {
     setLoading(true);
     try {
-      const deviceId = localStorage.getItem('deviceId')
-        || (crypto?.randomUUID ? crypto.randomUUID() : `${Date.now()}-${Math.random()}`);
+      if (!crypto?.randomUUID) {
+        throw new Error('Your browser does not support secure guest session IDs.');
+      }
+
+      const deviceId = localStorage.getItem('deviceId') || crypto.randomUUID();
 
       const res = await api.loginGuest(deviceId);
       login(res.token, res.username, res.role, res.deviceId || deviceId);

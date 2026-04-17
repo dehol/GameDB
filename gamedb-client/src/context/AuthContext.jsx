@@ -2,6 +2,9 @@ import { createContext, useContext, useState, useEffect } from 'react';
 import { jwtDecode } from './jwtDecode';
 
 const AuthContext = createContext(null);
+const NAME_CLAIM = "http://schemas.xmlsoap.org/ws/2005/05/identity/claims/name";
+const ROLE_CLAIM = "http://schemas.microsoft.com/ws/2008/06/identity/claims/role";
+const NAME_ID_CLAIM = "http://schemas.xmlsoap.org/ws/2005/05/identity/claims/nameidentifier";
 
 export function AuthProvider({ children }) {
   const [user, setUser] = useState(null);
@@ -21,12 +24,12 @@ export function AuthProvider({ children }) {
         } else {
           setUser({
             token,
-            username: decoded["http://schemas.xmlsoap.org/ws/2005/05/identity/claims/name"] 
+            username: decoded[NAME_CLAIM]
                       || decoded.unique_name 
                       || decoded.name,
-            role: decoded["http://schemas.microsoft.com/ws/2008/06/identity/claims/role"] 
+            role: decoded[ROLE_CLAIM]
                   || decoded.role,
-            userId: decoded["http://schemas.xmlsoap.org/ws/2005/05/identity/claims/nameidentifier"] 
+            userId: decoded[NAME_ID_CLAIM]
                     || decoded.nameid,
           });
         }
@@ -48,7 +51,7 @@ export function AuthProvider({ children }) {
       token,
       username,
       role,
-      userId: decoded["http://schemas.xmlsoap.org/ws/2005/05/identity/claims/nameidentifier"]
+      userId: decoded[NAME_ID_CLAIM]
         || decoded.nameid,
     });
   };

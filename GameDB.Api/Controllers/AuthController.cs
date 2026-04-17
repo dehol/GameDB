@@ -49,7 +49,8 @@ public class AuthController : ControllerBase
         if (string.IsNullOrWhiteSpace(deviceId))
             return BadRequest("Device ID is required");
 
-        var result = await _auth.LoginGuestAsync(deviceId, Request.Headers.UserAgent.ToString());
+        var userAgent = Request.Headers.UserAgent.FirstOrDefault();
+        var result = await _auth.LoginGuestAsync(deviceId, string.IsNullOrWhiteSpace(userAgent) ? null : userAgent);
         return Ok(new
         {
             token = result.token,
