@@ -7,6 +7,7 @@ import {
   Form,
   Input,
   InputNumber,
+  Popconfirm,
   Progress,
   Row,
   Space,
@@ -162,17 +163,23 @@ export default function SyncPage() {
     setActionLoading(null);
   };
 
-  const cancelImport = async () => {
-    if (!currentJob?.pipelineId) return;
-    setActionLoading('cancel');
+  const cancelPipeline = async (pipelineId) => {
+    if (!pipelineId) return;
+    const loadingKey = `cancel:${pipelineId}`;
+    setActionLoading(loadingKey);
     try {
-      const res = await api.cancelImportPipeline(currentJob.pipelineId);
+      const res = await api.cancelImportPipeline(pipelineId);
       message.info(res.message || 'Cancellation requested');
       await refreshAll();
     } catch (e) {
       message.error(e.message);
     }
     setActionLoading(null);
+  };
+
+  const cancelImport = async () => {
+    if (!currentJob?.pipelineId) return;
+    await cancelPipeline(currentJob.pipelineId);
   };
 
   const retryLast = async () => {
@@ -267,6 +274,33 @@ export default function SyncPage() {
       ellipsis: true,
       render: (value) => value || '—',
     },
+    {
+      title: 'Actions',
+      key: 'actions',
+      width: 130,
+      render: (_, row) => {
+        const canCancel = row.status === 'running' || row.status === 'pending';
+        if (!canCancel) return '—';
+        const loadingKey = `cancel:${row.importJobId}`;
+        return (
+          <Popconfirm
+            title={`Cancel job #${row.importJobId}?`}
+            okText="Yes"
+            cancelText="No"
+            onConfirm={() => cancelPipeline(row.importJobId)}
+          >
+            <Button
+              danger
+              size="small"
+              loading={actionLoading === loadingKey}
+              disabled={Boolean(actionLoading) && actionLoading !== loadingKey}
+            >
+              Cancel
+            </Button>
+          </Popconfirm>
+        );
+      },
+    },
   ];
 
   return (
@@ -288,7 +322,7 @@ export default function SyncPage() {
           danger
           icon={<PauseCircleOutlined />}
           onClick={cancelImport}
-          loading={actionLoading === 'cancel'}
+          loading={actionLoading === `cancel:${currentJob?.pipelineId}`}
           disabled={!currentJob?.pipelineId || (currentJob?.status !== 'running' && currentJob?.status !== 'pending')}
         >
           Cancel
