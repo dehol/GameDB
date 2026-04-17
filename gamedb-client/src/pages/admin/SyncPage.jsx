@@ -342,7 +342,7 @@ export default function SyncPage() {
         <Button
           type="primary"
           icon={<ImportOutlined />}
-          onClick={startImport}
+          onClick={() => startImport()}
           loading={actionLoading === 'start'}
           disabled={currentJob?.status === 'running' || currentJob?.status === 'pending'}
         >
