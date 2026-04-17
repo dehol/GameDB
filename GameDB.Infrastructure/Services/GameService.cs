@@ -74,25 +74,21 @@ public class GameService
                 .AverageAsync(g => (double?)g.rating) ?? 0d;
         }
 
+        IOrderedQueryable<GameCatalogRow> ApplyPopularitySort(IQueryable<GameCatalogRow> source) =>
+            source
+                .OrderByDescending(g =>
+                    (g.rating ?? 0) > 0 && (g.rating_count ?? 0) > 0
+                        ? ((((g.rating_count ?? 0) * (g.rating ?? 0d)) + (bayesianPriorVotes * globalAverageRating))
+                            / ((g.rating_count ?? 0) + bayesianPriorVotes))
+                        : 0d)
+                .ThenByDescending(g => g.rating_count ?? 0)
+                .ThenByDescending(g => g.rating ?? 0);
+
         // Apply sorting
         query = sortKey switch
         {
-            "rating" => query
-                .OrderByDescending(g =>
-                    (g.rating ?? 0) > 0 && (g.rating_count ?? 0) > 0
-                        ? ((((g.rating_count ?? 0) * (g.rating ?? 0d)) + (bayesianPriorVotes * globalAverageRating))
-                            / ((g.rating_count ?? 0) + bayesianPriorVotes))
-                        : 0d)
-                .ThenByDescending(g => g.rating_count ?? 0)
-                .ThenByDescending(g => g.rating ?? 0),
-            "popularity" => query
-                .OrderByDescending(g =>
-                    (g.rating ?? 0) > 0 && (g.rating_count ?? 0) > 0
-                        ? ((((g.rating_count ?? 0) * (g.rating ?? 0d)) + (bayesianPriorVotes * globalAverageRating))
-                            / ((g.rating_count ?? 0) + bayesianPriorVotes))
-                        : 0d)
-                .ThenByDescending(g => g.rating_count ?? 0)
-                .ThenByDescending(g => g.rating ?? 0),
+            "rating" => ApplyPopularitySort(query),
+            "popularity" => ApplyPopularitySort(query),
             "price_asc" => query.OrderBy(g => g.min_price ?? decimal.MaxValue),
             "price_desc" => query.OrderByDescending(g => g.min_price ?? 0),
             "discount" => query.OrderByDescending(g => g.max_discount ?? 0),

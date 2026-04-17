@@ -165,7 +165,7 @@ function GameRow({ game, inWishlist, onWishlist, onClick }) {
       {game.cover_url ? (
         <img
           src={game.cover_url}
-          alt={game.title || 'Game cover'}
+          alt={game.title ? `${game.title} cover` : ''}
           loading="lazy"
           style={{
             width: 52, height: 70, flexShrink: 0, objectFit: 'cover',
