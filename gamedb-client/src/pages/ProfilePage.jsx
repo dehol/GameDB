@@ -25,7 +25,7 @@ export default function ProfilePage() {
       <Card title="Profile">
         <Descriptions bordered column={1}>
           <Descriptions.Item label="Username">{profile.username}</Descriptions.Item>
-          <Descriptions.Item label="Email">{profile.email}</Descriptions.Item>
+          <Descriptions.Item label="Email">{profile.email || '—'}</Descriptions.Item>
           <Descriptions.Item label="Role">{profile.role}</Descriptions.Item>
           <Descriptions.Item label="Registered">{new Date(profile.createdAt).toLocaleDateString()}</Descriptions.Item>
           <Descriptions.Item label="Last Login">{profile.lastLogin ? new Date(profile.lastLogin).toLocaleDateString() : '—'}</Descriptions.Item>

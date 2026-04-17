@@ -35,6 +35,7 @@ builder.Services.AddScoped<WishlistService>();
 builder.Services.AddScoped<PriceSyncService>();
 builder.Services.AddScoped<ProfileService>();
 builder.Services.AddScoped<AlertService>();
+builder.Services.AddScoped<NotificationService>();
 builder.Services.AddScoped<LibraryService>();
 builder.Services.AddScoped<GameImportService>();
 builder.Services.AddScoped<ReferenceDataCache>();

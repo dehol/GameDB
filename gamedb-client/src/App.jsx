@@ -3,7 +3,7 @@ import { ConfigProvider, Layout, Menu, Button, theme } from 'antd';
 import {
   AppstoreOutlined, HeartOutlined, UserOutlined, BellOutlined,
   BookOutlined, SettingOutlined, SyncOutlined, LoginOutlined, LogoutOutlined,
-  LoadingOutlined
+  LoadingOutlined, NotificationOutlined
 } from '@ant-design/icons';
 import { AuthProvider, useAuth } from './context/AuthContext';
 
@@ -14,6 +14,7 @@ import WishlistPage from './pages/WishlistPage';
 import ProfilePage from './pages/ProfilePage';
 import AlertsPage from './pages/AlertsPage';
 import LibraryPage from './pages/LibraryPage';
+import NotificationsPage from './pages/NotificationsPage';
 import GamesAdminPage from './pages/admin/GamesAdminPage';
 import SyncPage from './pages/admin/SyncPage';
 
@@ -45,6 +46,7 @@ function AppLayout() {
     menuItems.push(
       { key: '/wishlist', icon: <HeartOutlined />, label: <Link to="/wishlist">Wishlist</Link> },
       { key: '/alerts', icon: <BellOutlined />, label: <Link to="/alerts">Alerts</Link> },
+      { key: '/notifications', icon: <NotificationOutlined />, label: <Link to="/notifications">Notifications</Link> },
       { key: '/library', icon: <BookOutlined />, label: <Link to="/library">Library</Link> },
       { key: '/profile', icon: <UserOutlined />, label: <Link to="/profile">Profile</Link> },
     );
@@ -85,6 +87,7 @@ function AppLayout() {
             <Route path="/wishlist" element={<PrivateRoute><WishlistPage /></PrivateRoute>} />
             <Route path="/profile" element={<PrivateRoute><ProfilePage /></PrivateRoute>} />
             <Route path="/alerts" element={<PrivateRoute><AlertsPage /></PrivateRoute>} />
+            <Route path="/notifications" element={<PrivateRoute><NotificationsPage /></PrivateRoute>} />
             <Route path="/library" element={<PrivateRoute><LibraryPage /></PrivateRoute>} />
             <Route path="/admin/games" element={<AdminRoute><GamesAdminPage /></AdminRoute>} />
             <Route path="/admin/sync" element={<AdminRoute><SyncPage /></AdminRoute>} />

@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Form, Input, Button, Card, Tabs, message } from 'antd';
+import { Form, Input, Button, Card, Tabs, Divider, message } from 'antd';
 import { UserOutlined, LockOutlined, MailOutlined } from '@ant-design/icons';
 import { useNavigate } from 'react-router-dom';
 import { api } from '../api';
@@ -38,6 +38,22 @@ export default function LoginPage() {
     setLoading(false);
   };
 
+  const onGuestLogin = async () => {
+    setLoading(true);
+    try {
+      const deviceId = localStorage.getItem('deviceId')
+        || (crypto?.randomUUID ? crypto.randomUUID() : `${Date.now()}-${Math.random()}`);
+
+      const res = await api.loginGuest(deviceId);
+      login(res.token, res.username, res.role, res.deviceId || deviceId);
+      message.success(`Welcome, ${res.username}!`);
+      navigate('/');
+    } catch (e) {
+      message.error(e.message);
+    }
+    setLoading(false);
+  };
+
   return (
     <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', minHeight: '80vh' }}>
       <Card style={{ width: 420 }}>
@@ -45,15 +61,21 @@ export default function LoginPage() {
           {
             key: 'login', label: 'Login',
             children: (
-              <Form onFinish={onLogin} layout="vertical">
-                <Form.Item name="email" rules={[{ required: true, type: 'email' }]}>
-                  <Input prefix={<MailOutlined />} placeholder="Email" size="large" />
-                </Form.Item>
-                <Form.Item name="password" rules={[{ required: true, min: 6 }]}>
-                  <Input.Password prefix={<LockOutlined />} placeholder="Password" size="large" />
-                </Form.Item>
-                <Button type="primary" htmlType="submit" loading={loading} block size="large">Log In</Button>
-              </Form>
+              <>
+                <Form onFinish={onLogin} layout="vertical">
+                  <Form.Item name="email" rules={[{ required: true, type: 'email' }]}>
+                    <Input prefix={<MailOutlined />} placeholder="Email" size="large" />
+                  </Form.Item>
+                  <Form.Item name="password" rules={[{ required: true, min: 6 }]}>
+                    <Input.Password prefix={<LockOutlined />} placeholder="Password" size="large" />
+                  </Form.Item>
+                  <Button type="primary" htmlType="submit" loading={loading} block size="large">Log In</Button>
+                </Form>
+                <Divider plain>or</Divider>
+                <Button block size="large" onClick={onGuestLogin} loading={loading}>
+                  Continue as guest
+                </Button>
+              </>
             )
           },
           {
