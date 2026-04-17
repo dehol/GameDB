@@ -68,10 +68,8 @@ public class GameService
         if (string.Equals(sortBy, "rating", StringComparison.OrdinalIgnoreCase))
         {
             globalAverageRating = await query
-                .Where(g => g.rating > 0 && (g.rating_count ?? 0) > 0)
-                .Select(g => g.rating ?? 0d)
-                .DefaultIfEmpty(0d)
-                .AverageAsync();
+                .Where(g => g.rating > 0 && g.rating_count > 0)
+                .AverageAsync(g => (double?)g.rating) ?? 0d;
         }
 
         // Apply sorting
