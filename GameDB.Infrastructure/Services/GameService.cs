@@ -1,6 +1,7 @@
 using GameDB.Core.DTOs;
 using GameDB.Core.Models;
 using Microsoft.EntityFrameworkCore;
+using Npgsql;
 
 namespace GameDB.Infrastructure.Services;
 
@@ -16,6 +17,47 @@ public class GameService
         var query = _db.Database
             .SqlQueryRaw<GameCatalogRow>("SELECT * FROM vw_game_catalog")
             .AsNoTracking();
+
+        try
+        {
+            return await QueryCatalogAsync(query, search, genreId, shopId, sortBy, contentType, page, pageSize);
+        }
+        catch (PostgresException ex) when (ex.SqlState == PostgresErrorCodes.UndefinedColumn &&
+                                           ex.MessageText.Contains("cover_url", StringComparison.OrdinalIgnoreCase))
+        {
+            // Backward compatibility for databases where vw_game_catalog has not been rebuilt with cover_url yet.
+            var fallbackQuery = _db.Database
+                .SqlQueryRaw<GameCatalogRow>(
+                    """
+                    SELECT
+                        "GameId",
+                        "Title",
+                        "Description",
+                        "ReleaseDate",
+                        developer_name,
+                        publisher_name,
+                        genres,
+                        min_price,
+                        max_discount,
+                        available_in_shops,
+                        "CreatedAt",
+                        "UpdatedAt",
+                        rating,
+                        rating_count,
+                        NULL::text AS cover_url,
+                        is_dlc
+                    FROM vw_game_catalog
+                    """)
+                .AsNoTracking();
+
+            return await QueryCatalogAsync(fallbackQuery, search, genreId, shopId, sortBy, contentType, page, pageSize);
+        }
+    }
+
+    private async Task<(List<GameCatalogRow> items, int totalCount)> QueryCatalogAsync(
+        IQueryable<GameCatalogRow> query,
+        string? search, int? genreId, int? shopId, string? sortBy, string? contentType, int page, int pageSize)
+    {
 
         // Database-side filtering
         if (!string.IsNullOrWhiteSpace(search))
