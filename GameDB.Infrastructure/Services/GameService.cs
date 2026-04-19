@@ -22,7 +22,7 @@ public class GameService
         {
             return await QueryCatalogAsync(query, search, genreId, shopId, sortBy, contentType, page, pageSize);
         }
-        catch (PostgresException ex) when (ex.SqlState == PostgresErrorCodes.UndefinedColumn &&
+        catch (PostgresException ex) when (ex.SqlState == "42703" &&
                                            ex.MessageText.Contains("cover_url", StringComparison.OrdinalIgnoreCase))
         {
             // Backward compatibility for databases where vw_game_catalog has not been rebuilt with cover_url yet.
