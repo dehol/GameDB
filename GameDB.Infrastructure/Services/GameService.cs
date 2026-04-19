@@ -14,43 +14,107 @@ public class GameService
         string? search, int? genreId, int? shopId, string? sortBy, string? contentType, int page, int pageSize)
     {
         // Base query from view - EF Core 7+ allows composing LINQ over raw SQL
+        const string primaryCatalogSql =
+            """
+            SELECT
+                v."GameId",
+                v."Title",
+                v."Description",
+                v."ReleaseDate",
+                v.developer_name,
+                v.publisher_name,
+                v.genres,
+                v.min_price,
+                v.max_discount,
+                v.available_in_shops,
+                v."CreatedAt",
+                v."UpdatedAt",
+                v.rating,
+                v.rating_count,
+                COALESCE(
+                    v.cover_url,
+                    CASE
+                        WHEN s."ExternalId" ~ '^[0-9]+$'
+                        THEN 'https://cdn.cloudflare.steamstatic.com/steam/apps/' || s."ExternalId" || '/header.jpg'
+                        ELSE NULL
+                    END
+                ) AS cover_url,
+                v.is_dlc
+            FROM vw_game_catalog v
+            LEFT JOIN LATERAL (
+                SELECT go."ExternalId"
+                FROM "GameOffer" go
+                WHERE go."GameId" = v."GameId"
+                  AND go."ShopId" = 1
+                  AND go."ExternalId" IS NOT NULL
+                ORDER BY go."GameOfferId"
+                LIMIT 1
+            ) s ON TRUE
+            """;
+
+        const string legacyCatalogSql =
+            """
+            SELECT
+                v."GameId",
+                v."Title",
+                v."Description",
+                v."ReleaseDate",
+                v.developer_name,
+                v.publisher_name,
+                v.genres,
+                v.min_price,
+                v.max_discount,
+                v.available_in_shops,
+                v."CreatedAt",
+                v."UpdatedAt",
+                v.rating,
+                v.rating_count,
+                CASE
+                    WHEN s."ExternalId" ~ '^[0-9]+$'
+                    THEN 'https://cdn.cloudflare.steamstatic.com/steam/apps/' || s."ExternalId" || '/header.jpg'
+                    ELSE NULL
+                END AS cover_url,
+                v.is_dlc
+            FROM vw_game_catalog v
+            LEFT JOIN LATERAL (
+                SELECT go."ExternalId"
+                FROM "GameOffer" go
+                WHERE go."GameId" = v."GameId"
+                  AND go."ShopId" = 1
+                  AND go."ExternalId" IS NOT NULL
+                ORDER BY go."GameOfferId"
+                LIMIT 1
+            ) s ON TRUE
+            """;
+
         var query = _db.Database
-            .SqlQueryRaw<GameCatalogRow>("SELECT * FROM vw_game_catalog")
+            .SqlQueryRaw<GameCatalogRow>(primaryCatalogSql)
             .AsNoTracking();
 
         try
         {
             return await QueryCatalogAsync(query, search, genreId, shopId, sortBy, contentType, page, pageSize);
         }
-        catch (PostgresException ex) when (ex.SqlState == "42703" &&
-                                           ex.MessageText.Contains("cover_url", StringComparison.OrdinalIgnoreCase))
+        catch (PostgresException ex) when (IsMissingCoverColumn(ex))
         {
             // Backward compatibility for databases where vw_game_catalog has not been rebuilt with cover_url yet.
             var fallbackQuery = _db.Database
-                .SqlQueryRaw<GameCatalogRow>(
-                    """
-                    SELECT
-                        "GameId",
-                        "Title",
-                        "Description",
-                        "ReleaseDate",
-                        developer_name,
-                        publisher_name,
-                        genres,
-                        min_price,
-                        max_discount,
-                        available_in_shops,
-                        "CreatedAt",
-                        "UpdatedAt",
-                        rating,
-                        rating_count,
-                        NULL::text AS cover_url,
-                        is_dlc
-                    FROM vw_game_catalog
-                    """)
+                .SqlQueryRaw<GameCatalogRow>(legacyCatalogSql)
                 .AsNoTracking();
 
             return await QueryCatalogAsync(fallbackQuery, search, genreId, shopId, sortBy, contentType, page, pageSize);
+        }
+
+        static bool IsMissingCoverColumn(PostgresException ex)
+        {
+            if (ex.SqlState != "42703")
+                return false;
+
+            var columnName = ex.ColumnName ?? string.Empty;
+            if (columnName.Contains("cover", StringComparison.OrdinalIgnoreCase))
+                return true;
+
+            return ex.MessageText.Contains("cover", StringComparison.OrdinalIgnoreCase);
         }
     }
 
