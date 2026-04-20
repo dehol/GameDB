@@ -36,9 +36,9 @@ public class IgdbApiService : IIgdbApiService
     private const int BatchSize = 500;
 
     // Query profiles from strict to permissive for resilience
-    private static readonly string StrictPcContentWhereClause = $"platforms = ({PcPlatformId}) & category = (0,1,2,4) & websites != null";
+    private static readonly string StrictPcContentWhereClause = $"platforms = ({PcPlatformId}) & game_type = (0,1,2,4) & websites != null";
     private static readonly string PcWithWebsitesWhereClause = $"platforms = ({PcPlatformId}) & websites != null";
-    private const string MainWithWebsitesWhereClause = "category = 0 & websites != null";
+    private const string MainWithWebsitesWhereClause = "game_type = 0 & websites != null";
     private const string WebsitesOnlyWhereClause = "websites != null";
 
     // Rate limit: 4 req/sec
@@ -176,7 +176,7 @@ public class IgdbApiService : IIgdbApiService
     private static string BuildQuery(int offset, string whereClause) => $"""
         fields name, summary, first_release_date,
                rating, rating_count,
-               category,
+               category, game_type, parent_game, version_parent, version_title,
                cover.url,
                genres.name,
                involved_companies.company.name,
@@ -300,8 +300,18 @@ public class IgdbApiService : IIgdbApiService
             CoverUrl          = coverUrl,
             Rating            = raw.Rating,
             RatingCount       = raw.RatingCount,
-            IsDlc             = raw.Category is 1 or 2 or 4 or 13,
+            IsDlc             = IsNonMainContent(raw),
         };
+    }
+
+    private static bool IsNonMainContent(IgdbRawGame raw)
+    {
+        var contentType = raw.GameType ?? raw.Category;
+        var isNonMainType = contentType.HasValue && contentType.Value != 0;
+        var hasParentGame = raw.ParentGame.HasValue;
+        var isVersion = raw.VersionParent.HasValue || !string.IsNullOrWhiteSpace(raw.VersionTitle);
+
+        return isNonMainType || hasParentGame || isVersion;
     }
 
     // ── Raw JSON models ───────────────────────────────────────────────────
@@ -314,6 +324,10 @@ public class IgdbApiService : IIgdbApiService
         double? Rating,
         [property: JsonPropertyName("rating_count")] int? RatingCount,
         int? Category,
+        [property: JsonPropertyName("game_type")] int? GameType,
+        [property: JsonPropertyName("parent_game")] int? ParentGame,
+        [property: JsonPropertyName("version_parent")] int? VersionParent,
+        [property: JsonPropertyName("version_title")] string? VersionTitle,
         IgdbCover? Cover,
         List<IgdbGenre>? Genres,
         [property: JsonPropertyName("involved_companies")] List<IgdbInvolvedCompany>? InvolvedCompanies,
