@@ -1,6 +1,7 @@
 using GameDB.Core.DTOs;
 using GameDB.Core.Models;
 using GameDB.Core.Constants;
+using GameDB.Core.Interfaces;
 using Microsoft.EntityFrameworkCore;
 using System.Text.RegularExpressions;
 
@@ -9,10 +10,13 @@ namespace GameDB.Infrastructure.Services;
 public class GameService
 {
     private const int CoverLookupTimeoutSeconds = 6;
+    private const int MaxRawgCoverLookups = 4;
     private const long MaxStorePageBytes = 1_000_000; // 1 MB
+    private const int StreamReadBufferSize = 8192;
 
     private readonly AppDbContext _db;
     private readonly IHttpClientFactory _httpClientFactory;
+    private readonly IRawgApiService _rawgApiService;
     private readonly ILogger<GameService> _logger;
     private static readonly Regex SteamAppIdFromUrlRegex = new(@"/app/(\d+)", RegexOptions.IgnoreCase | RegexOptions.Compiled);
     private static readonly Regex DigitsRegex = new(@"^\d+$", RegexOptions.Compiled);
@@ -23,10 +27,15 @@ public class GameService
         "<meta[^>]+content=[\"'](?<url>[^\"']+)[\"'][^>]*(?:property|name)=[\"'](?:og:image|twitter:image)[\"'][^>]*>",
         RegexOptions.IgnoreCase | RegexOptions.Compiled);
 
-    public GameService(AppDbContext db, IHttpClientFactory httpClientFactory, ILogger<GameService> logger)
+    public GameService(
+        AppDbContext db,
+        IHttpClientFactory httpClientFactory,
+        IRawgApiService rawgApiService,
+        ILogger<GameService> logger)
     {
         _db = db;
         _httpClientFactory = httpClientFactory;
+        _rawgApiService = rawgApiService;
         _logger = logger;
     }
 
@@ -221,7 +230,7 @@ public class GameService
             }
         }
 
-        var unresolvedIds = ids.Where(id => !result.ContainsKey(id)).ToList();
+        var unresolvedIds = ids.Where(id => !result.ContainsKey(id)).ToHashSet();
         if (unresolvedIds.Count > 0)
         {
             var unresolvedStrings = unresolvedIds.Select(id => id.ToString()).ToList();
@@ -239,6 +248,45 @@ public class GameService
                 if (int.TryParse(steamExternalId, out var requestedId) && unresolvedIds.Contains(requestedId))
                 {
                     result[requestedId] = steamExternalId;
+                    unresolvedIds.Remove(requestedId);
+                }
+            }
+        }
+
+        if (unresolvedIds.Count > 0)
+        {
+            var rawgByGameId = await _db.Games
+                .AsNoTracking()
+                .Where(g => unresolvedIds.Contains(g.GameId) && g.RawgId != null)
+                .Select(g => new { g.GameId, RawgId = g.RawgId!.Value })
+                .ToListAsync();
+
+            using var semaphore = new SemaphoreSlim(MaxRawgCoverLookups);
+            var rawgTasks = rawgByGameId.Select(async item =>
+            {
+                await semaphore.WaitAsync();
+                try
+                {
+                    var rawgGame = await _rawgApiService.GetGameDetailsAsync(item.RawgId);
+                    return (item.GameId, rawgGame?.BackgroundImage);
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogDebug(ex, "Could not resolve RAWG cover image for game {GameId} (RawgId {RawgId})", item.GameId, item.RawgId);
+                    return (item.GameId, (string?)null);
+                }
+                finally
+                {
+                    semaphore.Release();
+                }
+            });
+
+            var rawgResults = await Task.WhenAll(rawgTasks);
+            foreach (var (gameId, backgroundImage) in rawgResults)
+            {
+                if (!string.IsNullOrWhiteSpace(backgroundImage))
+                {
+                    result[gameId] = backgroundImage;
                 }
             }
         }
@@ -294,7 +342,7 @@ public class GameService
         await using var stream = await content.ReadAsStreamAsync();
         using var reader = new StreamReader(stream);
 
-        var buffer = new char[8192];
+        var buffer = new char[StreamReadBufferSize];
         var sb = new System.Text.StringBuilder();
 
         while (true)

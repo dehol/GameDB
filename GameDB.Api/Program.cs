@@ -20,11 +20,15 @@ builder.Services.AddDbContext<AppDbContext>(opt =>
 // Configuration
 builder.Services.Configure<IgdbSettings>(
     builder.Configuration.GetSection("Igdb"));
+builder.Services.Configure<RawgSettings>(
+    builder.Configuration.GetSection("Rawg"));
 builder.Services.Configure<ImportSettings>(
     builder.Configuration.GetSection("Import"));
 
 builder.Services.AddSingleton(sp =>
     sp.GetRequiredService<Microsoft.Extensions.Options.IOptions<IgdbSettings>>().Value);
+builder.Services.AddSingleton(sp =>
+    sp.GetRequiredService<Microsoft.Extensions.Options.IOptions<RawgSettings>>().Value);
 builder.Services.AddSingleton(sp =>
     sp.GetRequiredService<Microsoft.Extensions.Options.IOptions<ImportSettings>>().Value);
 
@@ -47,6 +51,12 @@ builder.Services.AddHttpClient<IgdbApiService>(client =>
     client.Timeout = TimeSpan.FromSeconds(30);
 });
 builder.Services.AddScoped<IIgdbApiService>(sp => sp.GetRequiredService<IgdbApiService>());
+builder.Services.AddHttpClient<RawgApiService>(client =>
+{
+    client.DefaultRequestHeaders.Add("User-Agent", "GameDB/1.0");
+    client.Timeout = TimeSpan.FromSeconds(30);
+});
+builder.Services.AddScoped<IRawgApiService>(sp => sp.GetRequiredService<RawgApiService>());
 
 // Pipeline
 builder.Services.AddSingleton<Channel<ImportPipelineWorkItem>>(sp =>
