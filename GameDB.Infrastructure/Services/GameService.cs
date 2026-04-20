@@ -44,6 +44,8 @@ public class GameService
                 !g.is_dlc &&
                 !EF.Functions.ILike(g.Title, "%bundle%") &&
                 !EF.Functions.ILike(g.Title, "%collection%") &&
+                !EF.Functions.ILike(g.Title, "% pack%") &&
+                !EF.Functions.ILike(g.Title, "%pack %") &&
                 !EF.Functions.ILike(g.Title, "% dlc%") &&
                 !EF.Functions.ILike(g.Title, "%map pack%") &&
                 !EF.Functions.ILike(g.Title, "%season pass%") &&
@@ -52,12 +54,12 @@ public class GameService
                 !EF.Functions.ILike(g.Title, "% addon%")),
             "bundle" or "bundles" => query.Where(g =>
                 EF.Functions.ILike(g.Title, "%bundle%") ||
-                EF.Functions.ILike(g.Title, "%collection%") ||
-                EF.Functions.ILike(g.Title, "% pack%") ||
-                EF.Functions.ILike(g.Title, "%pack %")),
+                EF.Functions.ILike(g.Title, "%collection%")),
             "dlc" or "dlcs" => query.Where(g =>
                 g.is_dlc ||
                 EF.Functions.ILike(g.Title, "% dlc%") ||
+                EF.Functions.ILike(g.Title, "% pack%") ||
+                EF.Functions.ILike(g.Title, "%pack %") ||
                 EF.Functions.ILike(g.Title, "%map pack%") ||
                 EF.Functions.ILike(g.Title, "%season pass%") ||
                 EF.Functions.ILike(g.Title, "%soundtrack%") ||
