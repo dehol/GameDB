@@ -58,6 +58,13 @@ public class GamesController : ControllerBase
         return Ok(scores);
     }
 
+    [HttpGet("covers")]
+    public async Task<IActionResult> GetCovers([FromQuery] List<int> gameIds)
+    {
+        var coverIds = await _games.GetSteamCoverIdsAsync(gameIds ?? new List<int>());
+        return Ok(coverIds);
+    }
+
     [HttpPost]
     [Authorize(Roles = "admin")]
     public async Task<IActionResult> Create(CreateGameDto dto)

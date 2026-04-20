@@ -53,7 +53,8 @@ public class GameService
             "bundle" or "bundles" => query.Where(g =>
                 EF.Functions.ILike(g.Title, "%bundle%") ||
                 EF.Functions.ILike(g.Title, "%collection%") ||
-                EF.Functions.ILike(g.Title, "%pack%")),
+                EF.Functions.ILike(g.Title, "% pack%") ||
+                EF.Functions.ILike(g.Title, "%pack %")),
             "dlc" or "dlcs" => query.Where(g =>
                 g.is_dlc ||
                 EF.Functions.ILike(g.Title, "% dlc%") ||
@@ -149,6 +150,26 @@ public class GameService
                 }).ToList()
             }).ToList()
         };
+    }
+
+    public async Task<Dictionary<int, string>> GetSteamCoverIdsAsync(IEnumerable<int> gameIds)
+    {
+        var ids = gameIds.Distinct().ToList();
+        if (ids.Count == 0) return new Dictionary<int, string>();
+
+        return await _db.GameOffers
+            .AsNoTracking()
+            .Where(o => ids.Contains(o.GameId)
+                        && o.ShopId == 1
+                        && o.ExternalId != null
+                        && o.ExternalId != "")
+            .GroupBy(o => o.GameId)
+            .Select(g => new
+            {
+                GameId = g.Key,
+                SteamAppId = g.Select(o => o.ExternalId!).First()
+            })
+            .ToDictionaryAsync(x => x.GameId, x => x.SteamAppId);
     }
 
     /// <summary>

@@ -59,6 +59,11 @@ export const api = {
   },
   getGame: (id) => request(`/games/${id}`),
   getDealScore: (id) => request(`/games/${id}/deal-score`),
+  getGameCovers: (gameIds) => {
+    const q = new URLSearchParams();
+    (gameIds || []).forEach(id => q.append('gameIds', id));
+    return request(`/games/covers?${q}`);
+  },
   createGame: (data) => request('/games', { method: 'POST', body: JSON.stringify(data) }),
   updateGame: (id, data) => request(`/games/${id}`, { method: 'PUT', body: JSON.stringify(data) }),
   deleteGame: (id) => request(`/games/${id}`, { method: 'DELETE' }),

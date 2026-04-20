@@ -56,7 +56,6 @@ const PRICE_PRESETS = [
 ];
 
 const PAGE_SIZE = 15;
-const STEAM_SHOP_ID = 1;
 
 /* ─── Cover placeholder ───────────────────────────────────────────── */
 function coverHue(title = '') {
@@ -349,29 +348,23 @@ export default function CatalogPage() {
 
   useEffect(() => {
     let cancelled = false;
-    const pending = games.filter(g => coverUrls[g.gameId] === undefined);
+    const pending = games.filter(g => coverUrls[g.gameId] === undefined).map(g => g.gameId);
     if (pending.length === 0) return;
 
     (async () => {
-      const resolved = await Promise.all(
-        pending.map(async (g) => {
-          try {
-            const details = await api.getGame(g.gameId);
-            const steamOffer = (details?.offers || []).find(
-              o => o.shopId === STEAM_SHOP_ID && o.externalId
-            );
-            return [g.gameId, getSteamCoverUrl(steamOffer?.externalId)];
-          } catch {
-            return [g.gameId, null];
-          }
-        })
-      );
+      let coversByGameId = {};
+      try {
+        coversByGameId = await api.getGameCovers(pending);
+      } catch {}
 
       if (cancelled) return;
       setCoverUrls(prev => {
         const next = { ...prev };
-        for (const [gameId, url] of resolved) {
-          if (next[gameId] === undefined) next[gameId] = url;
+        for (const gameId of pending) {
+          if (next[gameId] === undefined) next[gameId] = null;
+        }
+        for (const [gameId, steamAppId] of Object.entries(coversByGameId || {})) {
+          next[Number(gameId)] = getSteamCoverUrl(steamAppId);
         }
         return next;
       });
