@@ -46,6 +46,9 @@ public class GameService
                 !EF.Functions.ILike(g.Title, "%collection%") &&
                 !EF.Functions.ILike(g.Title, "% pack%") &&
                 !EF.Functions.ILike(g.Title, "%pack %") &&
+                !EF.Functions.ILike(g.Title, "% pack") &&
+                !EF.Functions.ILike(g.Title, "pack %") &&
+                !EF.Functions.ILike(g.Title, "pack") &&
                 !EF.Functions.ILike(g.Title, "% dlc%") &&
                 !EF.Functions.ILike(g.Title, "%map pack%") &&
                 !EF.Functions.ILike(g.Title, "%season pass%") &&
@@ -60,6 +63,9 @@ public class GameService
                 EF.Functions.ILike(g.Title, "% dlc%") ||
                 EF.Functions.ILike(g.Title, "% pack%") ||
                 EF.Functions.ILike(g.Title, "%pack %") ||
+                EF.Functions.ILike(g.Title, "% pack") ||
+                EF.Functions.ILike(g.Title, "pack %") ||
+                EF.Functions.ILike(g.Title, "pack") ||
                 EF.Functions.ILike(g.Title, "%map pack%") ||
                 EF.Functions.ILike(g.Title, "%season pass%") ||
                 EF.Functions.ILike(g.Title, "%soundtrack%") ||
