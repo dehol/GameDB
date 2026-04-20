@@ -7,6 +7,9 @@ namespace GameDB.Infrastructure.Services;
 
 public class GameService
 {
+    private const int CoverLookupTimeoutSeconds = 6;
+    private const long MaxStorePageBytes = 1_000_000; // 1 MB
+
     private readonly AppDbContext _db;
     private readonly IHttpClientFactory _httpClientFactory;
     private readonly ILogger<GameService> _logger;
@@ -190,7 +193,7 @@ public class GameService
 
         var result = new Dictionary<int, string>();
         var client = _httpClientFactory.CreateClient();
-        client.Timeout = TimeSpan.FromSeconds(6);
+        client.Timeout = TimeSpan.FromSeconds(CoverLookupTimeoutSeconds);
 
         foreach (var group in offers.GroupBy(o => o.GameId))
         {
@@ -246,7 +249,11 @@ public class GameService
                 var contentType = response.Content.Headers.ContentType?.MediaType;
                 if (!string.Equals(contentType, "text/html", StringComparison.OrdinalIgnoreCase)) continue;
 
-                var html = await response.Content.ReadAsStringAsync();
+                var contentLength = response.Content.Headers.ContentLength;
+                if (contentLength.HasValue && contentLength.Value > MaxStorePageBytes) continue;
+
+                var html = await ReadContentLimitedAsync(response.Content, MaxStorePageBytes);
+                if (html == null) continue;
                 var imageUrl = TryExtractMetaImageUrl(html, pageUri);
                 if (!string.IsNullOrWhiteSpace(imageUrl)) return imageUrl;
             }
@@ -257,6 +264,26 @@ public class GameService
         }
 
         return null;
+    }
+
+    private static async Task<string?> ReadContentLimitedAsync(HttpContent content, long maxChars)
+    {
+        await using var stream = await content.ReadAsStreamAsync();
+        using var reader = new StreamReader(stream);
+
+        var buffer = new char[8192];
+        var sb = new System.Text.StringBuilder();
+
+        while (true)
+        {
+            var read = await reader.ReadAsync(buffer, 0, buffer.Length);
+            if (read == 0) break;
+
+            sb.Append(buffer, 0, read);
+            if (sb.Length > maxChars) return null;
+        }
+
+        return sb.ToString();
     }
 
     private static string? TryExtractMetaImageUrl(string html, Uri pageUri)

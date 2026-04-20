@@ -64,8 +64,10 @@ function coverHue(title = '') {
 
 function extractSteamAppId(value) {
   if (!value) return null;
-  const m = String(value).match(/\d+/);
-  return m ? m[0] : null;
+  const normalized = String(value).trim();
+  if (/^\d+$/.test(normalized)) return normalized;
+  const m = normalized.match(/\/app\/(\d+)(?:[/?#]|$)/i);
+  return m ? m[1] : null;
 }
 
 function getSteamCoverUrls(steamAppId) {
@@ -173,7 +175,7 @@ function GameRow({ game, inWishlist, onWishlist, onClick, coverUrls }) {
   const genres = game.genres ? game.genres.split(', ') : [];
   const hue = coverHue(game.title);
   const hasDiscount = game.max_discount > 0;
-  const currentCoverUrl = Array.isArray(coverUrls) ? (coverUrls[coverIndex] || null) : coverUrls;
+  const currentCoverUrl = coverUrls?.[coverIndex] || null;
 
   useEffect(() => {
     setCoverFailed(false);
