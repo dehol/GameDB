@@ -34,8 +34,9 @@ const SORT_OPTIONS = [
 
 const CONTENT_TYPE_OPTIONS = [
   { value: 'all', label: 'All' },
-  { value: 'games', label: 'Games only' },
-  { value: 'dlc', label: 'DLC only' },
+  { value: 'main_game', label: 'Main game' },
+  { value: 'bundle', label: 'Bundle' },
+  { value: 'dlc', label: 'DLCs' },
 ];
 
 const DISCOUNT_PRESETS = [
@@ -55,10 +56,16 @@ const PRICE_PRESETS = [
 ];
 
 const PAGE_SIZE = 15;
+const STEAM_SHOP_ID = 1;
 
 /* ─── Cover placeholder ───────────────────────────────────────────── */
 function coverHue(title = '') {
   return [...title].reduce((acc, c) => acc + c.charCodeAt(0), 0) % 360;
+}
+
+function getSteamCoverUrl(steamAppId) {
+  if (!steamAppId || !/^\d+$/.test(String(steamAppId))) return null;
+  return `https://shared.cloudflare.steamstatic.com/store_item_assets/steam/apps/${steamAppId}/capsule_184x69.jpg`;
 }
 
 /* ─── Sub-components ──────────────────────────────────────────────── */
@@ -84,10 +91,11 @@ function FSelect({ value, onChange, options, placeholder }) {
         color: value ? 'var(--text-primary)' : 'var(--text-muted)',
         borderRadius: 'var(--radius)', fontSize: 12, cursor: 'pointer',
         outline: 'none',
+        backgroundColor: '#1f1f1f',
       }}
     >
-      {placeholder && <option value="" style={{ color: 'var(--text-muted)' }}>{placeholder}</option>}
-      {options.map(o => <option key={o.value} value={o.value} style={{ color: 'var(--text-primary)' }}>{o.label}</option>)}
+      {placeholder && <option value="" style={{ color: '#8c8c8c', backgroundColor: '#1f1f1f' }}>{placeholder}</option>}
+      {options.map(o => <option key={o.value} value={o.value} style={{ color: '#f5f5f5', backgroundColor: '#1f1f1f' }}>{o.label}</option>)}
     </select>
   );
 }
@@ -140,8 +148,9 @@ function HeartIcon({ filled }) {
   );
 }
 
-function GameRow({ game, inWishlist, onWishlist, onClick }) {
+function GameRow({ game, inWishlist, onWishlist, onClick, coverUrl }) {
   const [hov, setHov] = useState(false);
+  const [coverFailed, setCoverFailed] = useState(false);
   const genres = game.genres ? game.genres.split(', ') : [];
   const hue = coverHue(game.title);
   const hasDiscount = game.max_discount > 0;
@@ -162,17 +171,31 @@ function GameRow({ game, inWishlist, onWishlist, onClick }) {
       }}
     >
       {/* Cover */}
-      <div style={{
-        width: 52, height: 70, flexShrink: 0,
-        borderRadius: 'var(--radius)',
-        background: `hsl(${hue},28%,22%)`,
-        border: '1px solid var(--border)',
-        display: 'flex', alignItems: 'center', justifyContent: 'center',
-        fontSize: 20, fontWeight: 800, color: 'rgba(255,255,255,0.5)',
-        fontFamily: 'var(--font-display)',
-      }}>
-        {(game.title || '?')[0].toUpperCase()}
-      </div>
+      {!coverFailed && coverUrl ? (
+        <img
+          src={coverUrl}
+          alt={game.title}
+          loading="lazy"
+          referrerPolicy="no-referrer"
+          onError={() => setCoverFailed(true)}
+          style={{
+            width: 52, height: 70, flexShrink: 0, objectFit: 'cover',
+            borderRadius: 'var(--radius)', border: '1px solid var(--border)',
+          }}
+        />
+      ) : (
+        <div style={{
+          width: 52, height: 70, flexShrink: 0,
+          borderRadius: 'var(--radius)',
+          background: `hsl(${hue},28%,22%)`,
+          border: '1px solid var(--border)',
+          display: 'flex', alignItems: 'center', justifyContent: 'center',
+          fontSize: 20, fontWeight: 800, color: 'rgba(255,255,255,0.5)',
+          fontFamily: 'var(--font-display)',
+        }}>
+          {(game.title || '?')[0].toUpperCase()}
+        </div>
+      )}
 
       {/* Meta */}
       <div style={{ flex: 1, minWidth: 0 }}>
@@ -264,6 +287,7 @@ function GameRow({ game, inWishlist, onWishlist, onClick }) {
 /* ─── Main Page ───────────────────────────────────────────────────── */
 export default function CatalogPage() {
   const [games, setGames] = useState([]);
+  const [coverUrls, setCoverUrls] = useState({});
   const [total, setTotal] = useState(0);
   const [loading, setLoading] = useState(false);
   const [wishlistIds, setWishlistIds] = useState(new Set());
@@ -322,6 +346,39 @@ export default function CatalogPage() {
   }, [debouncedSearch, genreId, shopId, maxPrice, minDiscount, onSaleOnly, sortBy, contentType, page]);
 
   useEffect(() => { fetchGames(); }, [fetchGames]);
+
+  useEffect(() => {
+    let cancelled = false;
+    const pending = games.filter(g => coverUrls[g.gameId] === undefined);
+    if (pending.length === 0) return;
+
+    (async () => {
+      const resolved = await Promise.all(
+        pending.map(async (g) => {
+          try {
+            const details = await api.getGame(g.gameId);
+            const steamOffer = (details?.offers || []).find(
+              o => o.shopId === STEAM_SHOP_ID && o.externalId
+            );
+            return [g.gameId, getSteamCoverUrl(steamOffer?.externalId)];
+          } catch {
+            return [g.gameId, null];
+          }
+        })
+      );
+
+      if (cancelled) return;
+      setCoverUrls(prev => {
+        const next = { ...prev };
+        for (const [gameId, url] of resolved) {
+          if (next[gameId] === undefined) next[gameId] = url;
+        }
+        return next;
+      });
+    })();
+
+    return () => { cancelled = true; };
+  }, [games, coverUrls]);
 
   const toggleWishlist = async (gameId) => {
     if (!isAuth) { message.warning('Please log in'); return; }
@@ -508,6 +565,7 @@ export default function CatalogPage() {
             <GameRow
               key={g.gameId}
               game={g}
+              coverUrl={coverUrls[g.gameId]}
               inWishlist={wishlistIds.has(g.gameId)}
               onWishlist={() => toggleWishlist(g.gameId)}
               onClick={() => navigate(`/games/${g.gameId}`)}
