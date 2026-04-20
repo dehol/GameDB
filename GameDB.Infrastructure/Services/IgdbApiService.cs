@@ -125,8 +125,8 @@ public class IgdbApiService : IIgdbApiService
 
             foreach (var raw in batch)
             {
-                if (excludeIgdbIds?.Contains(raw.Id) == true) continue;
                 if (includeIgdbIds != null && !includeIgdbIds.Contains(raw.Id)) continue;
+                if (excludeIgdbIds?.Contains(raw.Id) == true) continue;
 
                 var game = MapGame(raw);
                 // Only include games available on at least one store

@@ -93,7 +93,9 @@ public class GameImportService
         var includeIgdbIds = options.IgdbGameIds is { Count: > 0 }
             ? options.IgdbGameIds.ToHashSet()
             : null;
-        var excludeIgdbIds = options.OverwriteExisting ? null : existingIgdbIds;
+        var excludeIgdbIds = (options.OverwriteExisting || includeIgdbIds is not null)
+            ? null
+            : existingIgdbIds;
 
         var igdbGames = await _igdb.GetPcGamesAsync(
             excludeIgdbIds: excludeIgdbIds,
@@ -334,7 +336,33 @@ public class GameImportService
                 {
                     if (!options.OverwriteExisting)
                     {
-                        _logger.LogDebug("Skipping existing game '{Title}' - OverwriteExisting is false", import.Title);
+                        var needsTypeRefresh = false;
+
+                        if (existing.IsDlc != import.IsDlc)
+                        {
+                            existing.IsDlc = import.IsDlc;
+                            needsTypeRefresh = true;
+                        }
+
+                        if (!string.Equals(existing.ContentType, import.ContentType, StringComparison.Ordinal))
+                        {
+                            existing.ContentType = import.ContentType;
+                            needsTypeRefresh = true;
+                        }
+
+                        if (needsTypeRefresh)
+                        {
+                            existing.UpdatedAt = DateTime.UtcNow;
+                            gamesToUpdate.Add(existing);
+                            _logger.LogInformation(
+                                "Refreshed content type for existing game '{Title}' (GameId={GameId}) to '{ContentType}'",
+                                import.Title, existing.GameId, existing.ContentType ?? "main_game");
+                        }
+                        else
+                        {
+                            _logger.LogDebug("Skipping existing game '{Title}' - OverwriteExisting is false", import.Title);
+                        }
+
                         continue;
                     }
 
