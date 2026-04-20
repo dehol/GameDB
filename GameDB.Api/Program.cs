@@ -75,18 +75,13 @@ builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
     });
 
 builder.Services.AddAuthorization();
-builder.Services.AddControllers()
-    .AddJsonOptions(o =>
-    {
-        o.JsonSerializerOptions.ReferenceHandler = ReferenceHandler.IgnoreCycles;
-        o.JsonSerializerOptions.PropertyNamingPolicy = System.Text.Json.JsonNamingPolicy.CamelCase;
-    });
+builder.Services.AddControllers();
 
 // Health Checks
 builder.Services.AddHealthChecks()
     .AddCheck<GameDB.Infrastructure.HealthChecks.ImportWorkerHealthCheck>("import-worker");
 
-// CORS
+// CORS for React
 builder.Services.AddCors(opt =>
     opt.AddDefaultPolicy(p => p
         .SetIsOriginAllowed(origin =>
