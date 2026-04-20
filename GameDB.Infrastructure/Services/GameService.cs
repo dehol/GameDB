@@ -3,6 +3,7 @@ using GameDB.Core.Models;
 using GameDB.Core.Constants;
 using GameDB.Core.Interfaces;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Logging;
 using System.Text.RegularExpressions;
 
 namespace GameDB.Infrastructure.Services;
