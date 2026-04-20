@@ -62,9 +62,22 @@ function coverHue(title = '') {
   return [...title].reduce((acc, c) => acc + c.charCodeAt(0), 0) % 360;
 }
 
-function getSteamCoverUrl(steamAppId) {
-  if (!steamAppId || !/^\d+$/.test(String(steamAppId))) return null;
-  return `https://shared.cloudflare.steamstatic.com/store_item_assets/steam/apps/${steamAppId}/capsule_184x69.jpg`;
+function extractSteamAppId(value) {
+  if (!value) return null;
+  const m = String(value).match(/\d+/);
+  return m ? m[0] : null;
+}
+
+function getSteamCoverUrls(steamAppId) {
+  const appId = extractSteamAppId(steamAppId);
+  if (!appId) return [];
+  const base = `https://shared.cloudflare.steamstatic.com/store_item_assets/steam/apps/${appId}`;
+  return [
+    `${base}/capsule_184x69.jpg`,
+    `${base}/capsule_sm_120.jpg`,
+    `${base}/header.jpg`,
+    `${base}/library_600x900_2x.jpg`,
+  ];
 }
 
 /* ─── Sub-components ──────────────────────────────────────────────── */
@@ -147,12 +160,19 @@ function HeartIcon({ filled }) {
   );
 }
 
-function GameRow({ game, inWishlist, onWishlist, onClick, coverUrl }) {
+function GameRow({ game, inWishlist, onWishlist, onClick, coverUrls }) {
   const [hov, setHov] = useState(false);
   const [coverFailed, setCoverFailed] = useState(false);
+  const [coverIndex, setCoverIndex] = useState(0);
   const genres = game.genres ? game.genres.split(', ') : [];
   const hue = coverHue(game.title);
   const hasDiscount = game.max_discount > 0;
+  const currentCoverUrl = Array.isArray(coverUrls) ? (coverUrls[coverIndex] || null) : coverUrls;
+
+  useEffect(() => {
+    setCoverFailed(false);
+    setCoverIndex(0);
+  }, [game.gameId, coverUrls]);
 
   return (
     <div
@@ -170,13 +190,19 @@ function GameRow({ game, inWishlist, onWishlist, onClick, coverUrl }) {
       }}
     >
       {/* Cover */}
-      {!coverFailed && coverUrl ? (
+      {!coverFailed && currentCoverUrl ? (
         <img
-          src={coverUrl}
+          src={currentCoverUrl}
           alt={game.title}
           loading="lazy"
           referrerPolicy="no-referrer"
-          onError={() => setCoverFailed(true)}
+          onError={() => {
+            if (Array.isArray(coverUrls) && coverIndex < coverUrls.length - 1) {
+              setCoverIndex(i => i + 1);
+              return;
+            }
+            setCoverFailed(true);
+          }}
           style={{
             width: 52, height: 70, flexShrink: 0, objectFit: 'cover',
             borderRadius: 'var(--radius)', border: '1px solid var(--border)',
@@ -364,7 +390,8 @@ export default function CatalogPage() {
           if (next[gameId] === undefined) next[gameId] = null;
         }
         for (const [gameId, steamAppId] of Object.entries(coversByGameId || {})) {
-          next[Number(gameId)] = getSteamCoverUrl(steamAppId);
+          const urls = getSteamCoverUrls(steamAppId);
+          next[Number(gameId)] = urls.length > 0 ? urls : null;
         }
         return next;
       });
@@ -558,7 +585,7 @@ export default function CatalogPage() {
             <GameRow
               key={g.gameId}
               game={g}
-              coverUrl={coverUrls[g.gameId]}
+              coverUrls={coverUrls[g.gameId]}
               inWishlist={wishlistIds.has(g.gameId)}
               onWishlist={() => toggleWishlist(g.gameId)}
               onClick={() => navigate(`/games/${g.gameId}`)}
