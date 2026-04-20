@@ -1,5 +1,6 @@
 using GameDB.Core.DTOs;
 using GameDB.Core.Models;
+using GameDB.Core.Constants;
 using Microsoft.EntityFrameworkCore;
 using System.Text.RegularExpressions;
 
@@ -188,7 +189,7 @@ public class GameService
         var offers = await _db.GameOffers
             .AsNoTracking()
             .Where(o => ids.Contains(o.GameId))
-            .Select(o => new { o.GameId, o.ExternalId, o.DownloadUrl })
+            .Select(o => new { o.GameId, o.ShopId, o.ExternalId, o.DownloadUrl })
             .ToListAsync();
 
         var result = new Dictionary<int, string>();
@@ -217,6 +218,28 @@ public class GameService
             if (!string.IsNullOrWhiteSpace(imageUrl))
             {
                 result[group.Key] = imageUrl;
+            }
+        }
+
+        var unresolvedIds = ids.Where(id => !result.ContainsKey(id)).ToList();
+        if (unresolvedIds.Count > 0)
+        {
+            var unresolvedStrings = unresolvedIds.Select(id => id.ToString()).ToList();
+            var steamExternalIds = await _db.GameOffers
+                .AsNoTracking()
+                .Where(o => o.ShopId == ShopConstants.Steam &&
+                            o.ExternalId != null &&
+                            unresolvedStrings.Contains(o.ExternalId))
+                .Select(o => o.ExternalId!)
+                .Distinct()
+                .ToListAsync();
+
+            foreach (var steamExternalId in steamExternalIds)
+            {
+                if (int.TryParse(steamExternalId, out var requestedId) && unresolvedIds.Contains(requestedId))
+                {
+                    result[requestedId] = steamExternalId;
+                }
             }
         }
 
