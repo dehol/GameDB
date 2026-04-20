@@ -1,7 +1,7 @@
 using GameDB.Core.DTOs;
+using GameDB.Core.Interfaces;
 using GameDB.Core.Models;
 using GameDB.Core.Constants;
-using GameDB.Core.Interfaces;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
 using System.Text.RegularExpressions;
@@ -10,33 +10,19 @@ namespace GameDB.Infrastructure.Services;
 
 public class GameService
 {
-    private const int CoverLookupTimeoutSeconds = 6;
-    private const int MaxRawgCoverLookups = 4;
-    private const long MaxStorePageBytes = 1_000_000; // 1 MB
-    private const int StreamReadBufferSize = 8192;
-
     private readonly AppDbContext _db;
-    private readonly IHttpClientFactory _httpClientFactory;
-    private readonly IRawgApiService _rawgApiService;
+    private readonly IIgdbApiService _igdbApiService;
     private readonly ILogger<GameService> _logger;
     private static readonly Regex SteamAppIdFromUrlRegex = new(@"/app/(\d+)", RegexOptions.IgnoreCase | RegexOptions.Compiled);
     private static readonly Regex DigitsRegex = new(@"^\d+$", RegexOptions.Compiled);
-    private static readonly Regex OgImageRegex = new(
-        "<meta[^>]+(?:property|name)=[\"'](?:og:image|twitter:image)[\"'][^>]*content=[\"'](?<url>[^\"']+)[\"'][^>]*>",
-        RegexOptions.IgnoreCase | RegexOptions.Compiled);
-    private static readonly Regex OgImageRegexReversed = new(
-        "<meta[^>]+content=[\"'](?<url>[^\"']+)[\"'][^>]*(?:property|name)=[\"'](?:og:image|twitter:image)[\"'][^>]*>",
-        RegexOptions.IgnoreCase | RegexOptions.Compiled);
 
     public GameService(
         AppDbContext db,
-        IHttpClientFactory httpClientFactory,
-        IRawgApiService rawgApiService,
+        IIgdbApiService igdbApiService,
         ILogger<GameService> logger)
     {
         _db = db;
-        _httpClientFactory = httpClientFactory;
-        _rawgApiService = rawgApiService;
+        _igdbApiService = igdbApiService;
         _logger = logger;
     }
 
@@ -191,108 +177,121 @@ public class GameService
         };
     }
 
+    /// <summary>
+    /// Resolve cover sources for a set of games.
+    /// Priority: 1) cached Game.CoverUrl (from IGDB import), 2) Steam CDN fallback
+    /// Returns dictionary of gameId → cover source string.
+    /// Cover source formats: "steam:{appId}" or full URL (https://...)
+    /// </summary>
     public async Task<Dictionary<int, string>> GetCoverSourcesAsync(IEnumerable<int> gameIds)
     {
         var ids = gameIds.Distinct().ToList();
         if (ids.Count == 0) return new Dictionary<int, string>();
 
-        var offers = await _db.GameOffers
+        var result = new Dictionary<int, string>();
+
+        // Step 1: Return cached CoverUrl from Game table (populated during IGDB import)
+        var games = await _db.Games
             .AsNoTracking()
-            .Where(o => ids.Contains(o.GameId))
-            .Select(o => new { o.GameId, o.ShopId, o.ExternalId, o.DownloadUrl })
+            .Where(g => ids.Contains(g.GameId))
+            .Select(g => new { g.GameId, g.CoverUrl, g.RawgId })
             .ToListAsync();
 
-        var result = new Dictionary<int, string>();
-        var client = _httpClientFactory.CreateClient();
-        client.Timeout = TimeSpan.FromSeconds(CoverLookupTimeoutSeconds);
-
-        foreach (var group in offers.GroupBy(o => o.GameId))
+        foreach (var game in games)
         {
-            var steamAppId = group
-                .Select(o => TryExtractSteamAppId(o.ExternalId) ?? TryExtractSteamAppId(o.DownloadUrl))
-                .FirstOrDefault(id => !string.IsNullOrWhiteSpace(id));
-
-            if (!string.IsNullOrWhiteSpace(steamAppId))
+            // Skip stale full Steam CDN URLs from previous code version
+            if (!string.IsNullOrWhiteSpace(game.CoverUrl) && !game.CoverUrl.StartsWith("https://cdn.cloudflare.steamstatic.com/") && !game.CoverUrl.StartsWith("https://shared.cloudflare.steamstatic.com/"))
             {
-                result[group.Key] = steamAppId;
-                continue;
-            }
-
-            var storeUrls = group
-                .Select(o => o.DownloadUrl)
-                .Where(u => !string.IsNullOrWhiteSpace(u))
-                .Distinct()
-                .ToList();
-
-            var imageUrl = await TryResolveStoreImageUrlAsync(client, storeUrls);
-            if (!string.IsNullOrWhiteSpace(imageUrl))
-            {
-                result[group.Key] = imageUrl;
+                result[game.GameId] = game.CoverUrl;
             }
         }
 
         var unresolvedIds = ids.Where(id => !result.ContainsKey(id)).ToHashSet();
-        if (unresolvedIds.Count > 0)
-        {
-            var unresolvedStrings = unresolvedIds.Select(id => id.ToString()).ToList();
-            var steamExternalIds = await _db.GameOffers
-                .AsNoTracking()
-                .Where(o => o.ShopId == ShopConstants.Steam &&
-                            o.ExternalId != null &&
-                            unresolvedStrings.Contains(o.ExternalId))
-                .Select(o => o.ExternalId!)
-                .Distinct()
-                .ToListAsync();
+        if (unresolvedIds.Count == 0) return result;
 
-            foreach (var steamExternalId in steamExternalIds)
+        // Step 2: Steam CDN fallback — for Steam games without an IGDB cover
+        var steamOffers = await _db.GameOffers
+            .AsNoTracking()
+            .Where(o => unresolvedIds.Contains(o.GameId) && o.ShopId == ShopConstants.Steam)
+            .Select(o => new { o.GameId, o.ExternalId, o.DownloadUrl })
+            .ToListAsync();
+
+        var resolvedBySteam = new Dictionary<int, string>();
+        foreach (var offer in steamOffers)
+        {
+            if (result.ContainsKey(offer.GameId)) continue;
+
+            var steamAppId = TryExtractSteamAppId(offer.ExternalId) ?? TryExtractSteamAppId(offer.DownloadUrl);
+            if (!string.IsNullOrWhiteSpace(steamAppId))
             {
-                if (int.TryParse(steamExternalId, out var requestedId) && unresolvedIds.Contains(requestedId))
-                {
-                    result[requestedId] = steamExternalId;
-                    unresolvedIds.Remove(requestedId);
-                }
+                // "steam:{appId}" — frontend generates multiple CDN fallback URLs
+                var coverSource = $"steam:{steamAppId}";
+                resolvedBySteam[offer.GameId] = coverSource;
+                result[offer.GameId] = coverSource;
             }
         }
 
-        if (unresolvedIds.Count > 0)
+        // Cache Steam fallback to Game.CoverUrl so we skip this next time
+        if (resolvedBySteam.Count > 0)
         {
-            var rawgByGameId = await _db.Games
-                .AsNoTracking()
-                .Where(g => unresolvedIds.Contains(g.GameId) && g.RawgId != null)
-                .Select(g => new { g.GameId, RawgId = g.RawgId!.Value })
-                .ToListAsync();
+            await SaveCoverUrlsAsync(resolvedBySteam);
+        }
 
-            using var semaphore = new SemaphoreSlim(MaxRawgCoverLookups);
-            var rawgTasks = rawgByGameId.Select(async item =>
-            {
-                await semaphore.WaitAsync();
-                try
-                {
-                    var rawgGame = await _rawgApiService.GetGameDetailsAsync(item.RawgId);
-                    return (item.GameId, rawgGame?.BackgroundImage);
-                }
-                catch (Exception ex)
-                {
-                    _logger.LogDebug(ex, "Could not resolve RAWG cover image for game {GameId} (RawgId {RawgId})", item.GameId, item.RawgId);
-                    return (item.GameId, (string?)null);
-                }
-                finally
-                {
-                    semaphore.Release();
-                }
-            });
+        unresolvedIds = ids.Where(id => !result.ContainsKey(id)).ToHashSet();
+        if (unresolvedIds.Count == 0) return result;
 
-            var rawgResults = await Task.WhenAll(rawgTasks);
-            foreach (var (gameId, backgroundImage) in rawgResults)
+        // Step 3: IGDB cover lookup by RawgId (which stores the IGDB game ID)
+        // For games imported before cover.url was added to the IGDB query
+        var unresolvedWithIgdbId = games
+            .Where(g => unresolvedIds.Contains(g.GameId) && g.RawgId != null)
+            .ToList();
+
+        if (unresolvedWithIgdbId.Count > 0)
+        {
+            var igdbIds = unresolvedWithIgdbId.Select(g => g.RawgId!.Value).ToList();
+            var igdbCovers = await _igdbApiService.GetCoversByIdsAsync(igdbIds);
+
+            var resolvedByIgdb = new Dictionary<int, string>();
+            foreach (var game in unresolvedWithIgdbId)
             {
-                if (!string.IsNullOrWhiteSpace(backgroundImage))
+                if (igdbCovers.TryGetValue(game.RawgId!.Value, out var coverUrl))
                 {
-                    result[gameId] = backgroundImage;
+                    resolvedByIgdb[game.GameId] = coverUrl;
+                    result[game.GameId] = coverUrl;
                 }
+            }
+
+            if (resolvedByIgdb.Count > 0)
+            {
+                await SaveCoverUrlsAsync(resolvedByIgdb);
             }
         }
 
         return result;
+    }
+
+    private async Task SaveCoverUrlsAsync(Dictionary<int, string> coverUrls)
+    {
+        if (coverUrls.Count == 0) return;
+
+        var gameIds = coverUrls.Keys.ToList();
+        var gamesToUpdate = await _db.Games
+            .Where(g => gameIds.Contains(g.GameId) && g.CoverUrl == null)
+            .ToListAsync();
+
+        foreach (var game in gamesToUpdate)
+        {
+            if (coverUrls.TryGetValue(game.GameId, out var url))
+            {
+                game.CoverUrl = url;
+            }
+        }
+
+        if (gamesToUpdate.Count > 0)
+        {
+            await _db.SaveChangesAsync();
+            _logger.LogDebug("Cached {Count} cover URLs", gamesToUpdate.Count);
+        }
     }
 
     private static string? TryExtractSteamAppId(string? value)
@@ -304,74 +303,6 @@ public class GameService
 
         var trimmed = value.Trim();
         return DigitsRegex.IsMatch(trimmed) ? trimmed : null;
-    }
-
-    private async Task<string?> TryResolveStoreImageUrlAsync(HttpClient client, IEnumerable<string?> storeUrls)
-    {
-        foreach (var rawUrl in storeUrls)
-        {
-            if (!Uri.TryCreate(rawUrl, UriKind.Absolute, out var pageUri)) continue;
-            if (pageUri.Scheme is not ("http" or "https")) continue;
-
-            try
-            {
-                using var response = await client.GetAsync(pageUri, HttpCompletionOption.ResponseHeadersRead);
-                if (!response.IsSuccessStatusCode) continue;
-
-                var contentType = response.Content.Headers.ContentType?.MediaType;
-                if (!string.Equals(contentType, "text/html", StringComparison.OrdinalIgnoreCase)) continue;
-
-                var contentLength = response.Content.Headers.ContentLength;
-                if (contentLength.HasValue && contentLength.Value > MaxStorePageBytes) continue;
-
-                var html = await ReadContentLimitedAsync(response.Content, MaxStorePageBytes);
-                if (html == null) continue;
-                var imageUrl = TryExtractMetaImageUrl(html, pageUri);
-                if (!string.IsNullOrWhiteSpace(imageUrl)) return imageUrl;
-            }
-            catch (Exception ex)
-            {
-                _logger.LogDebug(ex, "Could not resolve cover image from {StoreUrl}", rawUrl);
-            }
-        }
-
-        return null;
-    }
-
-    private static async Task<string?> ReadContentLimitedAsync(HttpContent content, long maxChars)
-    {
-        await using var stream = await content.ReadAsStreamAsync();
-        using var reader = new StreamReader(stream);
-
-        var buffer = new char[StreamReadBufferSize];
-        var sb = new System.Text.StringBuilder();
-
-        while (true)
-        {
-            var read = await reader.ReadAsync(buffer, 0, buffer.Length);
-            if (read == 0) break;
-
-            sb.Append(buffer, 0, read);
-            if (sb.Length > maxChars) return null;
-        }
-
-        return sb.ToString();
-    }
-
-    private static string? TryExtractMetaImageUrl(string html, Uri pageUri)
-    {
-        if (string.IsNullOrWhiteSpace(html)) return null;
-
-        var match = OgImageRegex.Match(html);
-        if (!match.Success) match = OgImageRegexReversed.Match(html);
-        if (!match.Success) return null;
-
-        var rawUrl = match.Groups["url"].Value;
-        if (string.IsNullOrWhiteSpace(rawUrl)) return null;
-
-        if (Uri.TryCreate(rawUrl, UriKind.Absolute, out var absolute)) return absolute.ToString();
-        if (Uri.TryCreate(pageUri, rawUrl, out var relative)) return relative.ToString();
-        return null;
     }
 
     /// <summary>

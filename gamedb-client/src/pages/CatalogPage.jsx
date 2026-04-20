@@ -73,19 +73,28 @@ function extractSteamAppId(value) {
 function getSteamCoverUrls(steamAppId) {
   const appId = extractSteamAppId(steamAppId);
   if (!appId) return [];
-  const base = `https://shared.cloudflare.steamstatic.com/store_item_assets/steam/apps/${appId}`;
+  const base = `https://cdn.cloudflare.steamstatic.com/steam/apps/${appId}`;
   return [
-    `${base}/capsule_184x69.jpg`,
-    `${base}/capsule_sm_120.jpg`,
     `${base}/header.jpg`,
-    `${base}/library_600x900_2x.jpg`,
+    `${base}/capsule_231x87.jpg`,
+    `${base}/capsule_184x69.jpg`,
   ];
 }
 
 function getCoverUrls(coverSource) {
   if (!coverSource) return [];
-  if (/^https?:\/\//i.test(String(coverSource))) return [String(coverSource)];
-  return getSteamCoverUrls(coverSource);
+  const src = String(coverSource);
+  // "steam:{appId}" — generate multiple CDN fallback URLs
+  if (src.startsWith('steam:')) {
+    const appId = src.slice(6);
+    return getSteamCoverUrls(appId);
+  }
+  // Pure digits — treat as Steam AppId for backward compat
+  if (/^\d+$/.test(src)) return getSteamCoverUrls(src);
+  // Full URL (IGDB cover, RAWG image, etc.) — use directly
+  if (/^https?:\/\//i.test(src)) return [src];
+  // URL-like but no scheme — try as-is
+  return [src];
 }
 
 /* ─── Sub-components ──────────────────────────────────────────────── */
@@ -612,7 +621,7 @@ export default function CatalogPage() {
             <PageBtn label="‹" disabled={page === 1} onClick={() => setPage(p => p - 1)} />
             {paginationRange(page, totalPages).map((p, i) =>
               p === '…'
-                ? <span key={i} style={{ padding: '0 4px', color: 'var(--text-muted)', lineHeight: '32px' }}>…</span>
+                ? <span key={`dots-${i}`} style={{ padding: '0 4px', color: 'var(--text-muted)', lineHeight: '32px' }}>…</span>
                 : <PageBtn key={p} label={p} active={p === page} onClick={() => setPage(p)} />
             )}
             <PageBtn label="›" disabled={page === totalPages} onClick={() => setPage(p => p + 1)} />

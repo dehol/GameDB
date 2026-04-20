@@ -20,6 +20,9 @@ public record GameImport
     // External IDs for matching (RAWG ID used for deduplication)
     public int? RawgId { get; init; }
     
+    // Cover art URL (from IGDB cover field)
+    public string? CoverUrl { get; init; }
+    
     // Rating from IGDB (0-100 scale)
     public double? Rating { get; init; }
     public int? RatingCount { get; init; }

@@ -66,6 +66,7 @@ builder.Services.AddSingleton<Channel<ImportPipelineWorkItem>>(sp =>
     }));
 builder.Services.AddSingleton<IPipelineService, ImportPipelineService>();
 builder.Services.AddHostedService<GameImportWorker>();
+builder.Services.AddHostedService<CoverRefreshWorker>();
 
 // JWT Auth
 var jwtKey = builder.Configuration["Jwt:Key"]!;

@@ -135,12 +135,49 @@ public class IgdbApiService : IIgdbApiService
         return result;
     }
 
+    // ── Cover batch lookup ──────────────────────────────────────────────
+
+    public async Task<Dictionary<int, string>> GetCoversByIdsAsync(IEnumerable<int> igdbIds, CancellationToken ct = default)
+    {
+        await EnsureTokenAsync(ct);
+
+        var result = new Dictionary<int, string>();
+        var idList = igdbIds.Distinct().ToList();
+
+        // IGDB allows ~500 IDs per request via "where id = (...)"
+        foreach (var chunk in idList.Chunk(BatchSize))
+        {
+            var idSet = string.Join(",", chunk);
+            var query = $"""
+                fields id, cover.url;
+                where id = ({idSet});
+                limit {BatchSize};
+                """;
+
+            var batch = await PostQueryAsync<List<IgdbRawCoverLookup>>("games", query, ct);
+            if (batch == null) continue;
+
+            foreach (var item in batch)
+            {
+                var url = item.Cover?.Url;
+                if (string.IsNullOrWhiteSpace(url)) continue;
+                if (url.StartsWith("//")) url = "https:" + url;
+                result[item.Id] = url;
+            }
+
+            await Task.Delay(300, ct);
+        }
+
+        return result;
+    }
+
     // ── Query builder ─────────────────────────────────────────────────────
 
     private static string BuildQuery(int offset, string whereClause) => $"""
         fields name, summary, first_release_date,
                rating, rating_count,
                category,
+               cover.url,
                genres.name,
                involved_companies.company.name,
                involved_companies.developer,
@@ -243,6 +280,11 @@ public class IgdbApiService : IIgdbApiService
         var egsUrl   = raw.Websites?
             .FirstOrDefault(w => w.Category == EgsCategory || IsEgsUrl(w.Url))?.Url;
 
+        // IGDB returns relative URLs like "//images.igdb.com/..." — make absolute
+        var coverUrl = raw.Cover?.Url;
+        if (coverUrl != null && coverUrl.StartsWith("//"))
+            coverUrl = "https:" + coverUrl;
+
         return new IgdbGame
         {
             Id                = raw.Id,
@@ -255,6 +297,7 @@ public class IgdbApiService : IIgdbApiService
             SteamUrl          = steamUrl,
             GogUrl            = gogUrl,
             EgsUrl            = egsUrl,
+            CoverUrl          = coverUrl,
             Rating            = raw.Rating,
             RatingCount       = raw.RatingCount,
             IsDlc             = raw.Category is 1 or 2 or 4 or 13,
@@ -271,9 +314,14 @@ public class IgdbApiService : IIgdbApiService
         double? Rating,
         [property: JsonPropertyName("rating_count")] int? RatingCount,
         int? Category,
+        IgdbCover? Cover,
         List<IgdbGenre>? Genres,
         [property: JsonPropertyName("involved_companies")] List<IgdbInvolvedCompany>? InvolvedCompanies,
         List<IgdbWebsite>? Websites);
+
+    private record IgdbCover(string? Url);
+
+    private record IgdbRawCoverLookup(int Id, IgdbCover? Cover);
 
     private record IgdbGenre(
         [property: JsonPropertyName("id")] int Id, 

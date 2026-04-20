@@ -115,6 +115,7 @@ public class GameImportService
             Genres     = g.Genres,
             RawgId     = g.Id,
             Offers     = BuildOffers(g),
+            CoverUrl   = g.CoverUrl,
             Rating     = g.Rating,
             RatingCount = g.RatingCount,
             IsDlc = g.IsDlc
@@ -375,6 +376,12 @@ public class GameImportService
                         needsUpdate = true;
                     }
 
+                    if (!string.IsNullOrEmpty(import.CoverUrl) && existing.CoverUrl != import.CoverUrl)
+                    {
+                        existing.CoverUrl = import.CoverUrl;
+                        needsUpdate = true;
+                    }
+
                     if (needsUpdate)
                     { existing.UpdatedAt = DateTime.UtcNow; gamesToUpdate.Add(existing); }
 
@@ -390,6 +397,7 @@ public class GameImportService
                         Description     = import.Description,
                         ReleaseDate     = import.ReleaseDate,
                         RawgId          = import.RawgId,
+                        CoverUrl        = import.CoverUrl,
                         DeveloperId     = await _cache.GetOrCreateDeveloperIdAsync(import.Developer),
                         PublisherId     = await _cache.GetOrCreatePublisherIdAsync(import.Publisher),
                         CreatedAt       = DateTime.UtcNow,
