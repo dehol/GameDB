@@ -1,7 +1,6 @@
 import { useState, useEffect, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { message } from 'antd';
-import { message } from 'antd';
 import { api } from '../api';
 import { useAuth } from '../context/AuthContext';
 
@@ -270,9 +269,6 @@ export default function CatalogPage() {
   const [wishlistIds, setWishlistIds] = useState(new Set());
 
   // Filters
-  const [wishlistIds, setWishlistIds] = useState(new Set());
-
-  // Filters
   const [search, setSearch] = useState('');
   const [debouncedSearch, setDebouncedSearch] = useState('');
   const [genreId, setGenreId] = useState(null);
@@ -284,7 +280,6 @@ export default function CatalogPage() {
   const [contentType, setContentType] = useState('all');
   const [page, setPage] = useState(1);
 
-
   const navigate = useNavigate();
   const { isAuth } = useAuth();
 
@@ -295,15 +290,10 @@ export default function CatalogPage() {
       api.getWishlist()
         .then(items => setWishlistIds(new Set(items.map(i => i.gameId))))
         .catch(() => {});
-      api.getWishlist()
-        .then(items => setWishlistIds(new Set(items.map(i => i.gameId))))
-        .catch(() => {});
     }
   }, [isAuth]);
 
   useEffect(() => {
-    const t = setTimeout(() => { setDebouncedSearch(search); setPage(1); }, 400);
-    return () => clearTimeout(t);
     const t = setTimeout(() => { setDebouncedSearch(search); setPage(1); }, 400);
     return () => clearTimeout(t);
   }, [search]);
@@ -334,14 +324,11 @@ export default function CatalogPage() {
   useEffect(() => { fetchGames(); }, [fetchGames]);
 
   const toggleWishlist = async (gameId) => {
-  const toggleWishlist = async (gameId) => {
     if (!isAuth) { message.warning('Please log in'); return; }
     try {
       const res = await api.toggleWishlist(gameId);
       setWishlistIds(prev => {
-      setWishlistIds(prev => {
         const next = new Set(prev);
-        if (res.added) next.add(gameId); else next.delete(gameId);
         if (res.added) next.add(gameId); else next.delete(gameId);
         return next;
       });
@@ -518,34 +505,6 @@ export default function CatalogPage() {
         {/* List */}
         <div style={{ display: 'flex', flexDirection: 'column', gap: 5, opacity: loading ? 0.5 : 1, transition: 'opacity 0.15s' }}>
           {games.map(g => (
-            <GameRow
-              key={g.gameId}
-              game={g}
-              inWishlist={wishlistIds.has(g.gameId)}
-              onWishlist={() => toggleWishlist(g.gameId)}
-              onClick={() => navigate(`/games/${g.gameId}`)}
-            />
-          ))}
-          {!loading && games.length === 0 && (
-            <div style={{ textAlign: 'center', padding: '60px 0', color: 'var(--text-muted)', fontSize: 14 }}>
-              No games found
-            </div>
-          )}
-        </div>
-
-        {/* Pagination */}
-        {totalPages > 1 && (
-          <div style={{ display: 'flex', justifyContent: 'center', gap: 4, marginTop: 24 }}>
-            <PageBtn label="‹" disabled={page === 1} onClick={() => setPage(p => p - 1)} />
-            {paginationRange(page, totalPages).map((p, i) =>
-              p === '…'
-                ? <span key={i} style={{ padding: '0 4px', color: 'var(--text-muted)', lineHeight: '32px' }}>…</span>
-                : <PageBtn key={p} label={p} active={p === page} onClick={() => setPage(p)} />
-            )}
-            <PageBtn label="›" disabled={page === totalPages} onClick={() => setPage(p => p + 1)} />
-          </div>
-        )}
-      </div>
             <GameRow
               key={g.gameId}
               game={g}
