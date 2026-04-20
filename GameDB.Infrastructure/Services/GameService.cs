@@ -1,13 +1,30 @@
 using GameDB.Core.DTOs;
 using GameDB.Core.Models;
 using Microsoft.EntityFrameworkCore;
+using System.Text.RegularExpressions;
 
 namespace GameDB.Infrastructure.Services;
 
 public class GameService
 {
     private readonly AppDbContext _db;
-    public GameService(AppDbContext db) => _db = db;
+    private readonly IHttpClientFactory _httpClientFactory;
+    private readonly ILogger<GameService> _logger;
+    private static readonly Regex SteamAppIdFromUrlRegex = new(@"/app/(\d+)", RegexOptions.IgnoreCase | RegexOptions.Compiled);
+    private static readonly Regex DigitsRegex = new(@"^\d+$", RegexOptions.Compiled);
+    private static readonly Regex OgImageRegex = new(
+        "<meta[^>]+(?:property|name)=[\"'](?:og:image|twitter:image)[\"'][^>]*content=[\"'](?<url>[^\"']+)[\"'][^>]*>",
+        RegexOptions.IgnoreCase | RegexOptions.Compiled);
+    private static readonly Regex OgImageRegexReversed = new(
+        "<meta[^>]+content=[\"'](?<url>[^\"']+)[\"'][^>]*(?:property|name)=[\"'](?:og:image|twitter:image)[\"'][^>]*>",
+        RegexOptions.IgnoreCase | RegexOptions.Compiled);
+
+    public GameService(AppDbContext db, IHttpClientFactory httpClientFactory, ILogger<GameService> logger)
+    {
+        _db = db;
+        _httpClientFactory = httpClientFactory;
+        _logger = logger;
+    }
 
     public async Task<(List<GameCatalogRow> items, int totalCount)> GetCatalogAsync(
         string? search, int? genreId, int? shopId, string? sortBy, string? contentType, int page, int pageSize)
@@ -160,24 +177,102 @@ public class GameService
         };
     }
 
-    public async Task<Dictionary<int, string>> GetSteamCoverIdsAsync(IEnumerable<int> gameIds)
+    public async Task<Dictionary<int, string>> GetCoverSourcesAsync(IEnumerable<int> gameIds)
     {
         var ids = gameIds.Distinct().ToList();
         if (ids.Count == 0) return new Dictionary<int, string>();
 
-        return await _db.GameOffers
+        var offers = await _db.GameOffers
             .AsNoTracking()
-            .Where(o => ids.Contains(o.GameId)
-                        && o.ShopId == 1
-                        && o.ExternalId != null
-                        && o.ExternalId != "")
-            .GroupBy(o => o.GameId)
-            .Select(g => new
+            .Where(o => ids.Contains(o.GameId))
+            .Select(o => new { o.GameId, o.ExternalId, o.DownloadUrl })
+            .ToListAsync();
+
+        var result = new Dictionary<int, string>();
+        var client = _httpClientFactory.CreateClient();
+        client.Timeout = TimeSpan.FromSeconds(6);
+
+        foreach (var group in offers.GroupBy(o => o.GameId))
+        {
+            var steamAppId = group
+                .Select(o => TryExtractSteamAppId(o.ExternalId) ?? TryExtractSteamAppId(o.DownloadUrl))
+                .FirstOrDefault(id => !string.IsNullOrWhiteSpace(id));
+
+            if (!string.IsNullOrWhiteSpace(steamAppId))
             {
-                GameId = g.Key,
-                SteamAppId = g.Select(o => o.ExternalId!).First()
-            })
-            .ToDictionaryAsync(x => x.GameId, x => x.SteamAppId);
+                result[group.Key] = steamAppId;
+                continue;
+            }
+
+            var storeUrls = group
+                .Select(o => o.DownloadUrl)
+                .Where(u => !string.IsNullOrWhiteSpace(u))
+                .Distinct()
+                .ToList();
+
+            var imageUrl = await TryResolveStoreImageUrlAsync(client, storeUrls);
+            if (!string.IsNullOrWhiteSpace(imageUrl))
+            {
+                result[group.Key] = imageUrl;
+            }
+        }
+
+        return result;
+    }
+
+    private static string? TryExtractSteamAppId(string? value)
+    {
+        if (string.IsNullOrWhiteSpace(value)) return null;
+
+        var fromUrl = SteamAppIdFromUrlRegex.Match(value);
+        if (fromUrl.Success) return fromUrl.Groups[1].Value;
+
+        var trimmed = value.Trim();
+        return DigitsRegex.IsMatch(trimmed) ? trimmed : null;
+    }
+
+    private async Task<string?> TryResolveStoreImageUrlAsync(HttpClient client, IEnumerable<string?> storeUrls)
+    {
+        foreach (var rawUrl in storeUrls)
+        {
+            if (!Uri.TryCreate(rawUrl, UriKind.Absolute, out var pageUri)) continue;
+            if (pageUri.Scheme is not ("http" or "https")) continue;
+
+            try
+            {
+                using var response = await client.GetAsync(pageUri, HttpCompletionOption.ResponseHeadersRead);
+                if (!response.IsSuccessStatusCode) continue;
+
+                var contentType = response.Content.Headers.ContentType?.MediaType;
+                if (!string.Equals(contentType, "text/html", StringComparison.OrdinalIgnoreCase)) continue;
+
+                var html = await response.Content.ReadAsStringAsync();
+                var imageUrl = TryExtractMetaImageUrl(html, pageUri);
+                if (!string.IsNullOrWhiteSpace(imageUrl)) return imageUrl;
+            }
+            catch (Exception ex)
+            {
+                _logger.LogDebug(ex, "Could not resolve cover image from {StoreUrl}", rawUrl);
+            }
+        }
+
+        return null;
+    }
+
+    private static string? TryExtractMetaImageUrl(string html, Uri pageUri)
+    {
+        if (string.IsNullOrWhiteSpace(html)) return null;
+
+        var match = OgImageRegex.Match(html);
+        if (!match.Success) match = OgImageRegexReversed.Match(html);
+        if (!match.Success) return null;
+
+        var rawUrl = match.Groups["url"].Value;
+        if (string.IsNullOrWhiteSpace(rawUrl)) return null;
+
+        if (Uri.TryCreate(rawUrl, UriKind.Absolute, out var absolute)) return absolute.ToString();
+        if (Uri.TryCreate(pageUri, rawUrl, out var relative)) return relative.ToString();
+        return null;
     }
 
     /// <summary>

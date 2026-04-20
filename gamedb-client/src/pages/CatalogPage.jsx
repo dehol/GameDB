@@ -80,6 +80,12 @@ function getSteamCoverUrls(steamAppId) {
   ];
 }
 
+function getCoverUrls(coverSource) {
+  if (!coverSource) return [];
+  if (/^https?:\/\//i.test(String(coverSource))) return [String(coverSource)];
+  return getSteamCoverUrls(coverSource);
+}
+
 /* ─── Sub-components ──────────────────────────────────────────────── */
 function FilterLabel({ children }) {
   return (
@@ -389,8 +395,8 @@ export default function CatalogPage() {
         for (const gameId of pending) {
           if (next[gameId] === undefined) next[gameId] = null;
         }
-        for (const [gameId, steamAppId] of Object.entries(coversByGameId || {})) {
-          const urls = getSteamCoverUrls(steamAppId);
+        for (const [gameId, coverSource] of Object.entries(coversByGameId || {})) {
+          const urls = getCoverUrls(coverSource);
           next[Number(gameId)] = urls.length > 0 ? urls : null;
         }
         return next;
