@@ -29,9 +29,11 @@ public class GameService
     public async Task<(List<GameCatalogRow> items, int totalCount)> GetCatalogAsync(
         string? search, int? genreId, int? shopId, string? sortBy, string? contentType, int page, int pageSize)
     {
+        var catalogQuerySql = await BuildCatalogQuerySqlAsync();
+
         // Base query from view - EF Core 7+ allows composing LINQ over raw SQL
         var query = _db.Database
-            .SqlQueryRaw<GameCatalogRow>("SELECT * FROM vw_game_catalog")
+            .SqlQueryRaw<GameCatalogRow>(catalogQuerySql)
             .AsNoTracking();
 
         // Database-side filtering
@@ -85,6 +87,53 @@ public class GameService
             .ToListAsync();
 
         return (items, totalCount);
+    }
+
+    private async Task<string> BuildCatalogQuerySqlAsync()
+    {
+        var hasCatalogContentType = await HasColumnAsync("vw_game_catalog", "content_type");
+        if (hasCatalogContentType)
+            return "SELECT * FROM vw_game_catalog";
+
+        _logger.LogWarning("vw_game_catalog.content_type is missing. Using compatibility projection.");
+
+        var hasGameContentType = await HasColumnAsync("Game", "ContentType");
+        if (hasGameContentType)
+        {
+            return """
+                SELECT
+                    v.*,
+                    COALESCE(g."ContentType",
+                        CASE WHEN COALESCE(v.is_dlc, false) THEN 'dlc_addon' ELSE 'main_game' END
+                    ) AS content_type
+                FROM vw_game_catalog v
+                LEFT JOIN "Game" g ON g."GameId" = v."GameId"
+                """;
+        }
+
+        return """
+            SELECT
+                v.*,
+                CASE WHEN COALESCE(v.is_dlc, false) THEN 'dlc_addon' ELSE 'main_game' END AS content_type
+            FROM vw_game_catalog v
+            """;
+    }
+
+    private async Task<bool> HasColumnAsync(string tableName, string columnName)
+    {
+        return await _db.Database
+            .SqlQueryRaw<int>(
+                """
+                SELECT 1
+                FROM information_schema.columns
+                WHERE table_schema = 'public'
+                  AND table_name = {0}
+                  AND column_name = {1}
+                LIMIT 1
+                """,
+                tableName,
+                columnName)
+            .AnyAsync();
     }
 
     private static string? NormalizeContentTypeFilter(string? contentType)
