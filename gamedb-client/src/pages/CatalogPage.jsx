@@ -35,8 +35,20 @@ const SORT_OPTIONS = [
 const CONTENT_TYPE_OPTIONS = [
   { value: 'all', label: 'All' },
   { value: 'main_game', label: 'Main game' },
+  { value: 'dlc_addon', label: 'DLC / Add-on' },
+  { value: 'expansion', label: 'Expansion' },
   { value: 'bundle', label: 'Bundle' },
-  { value: 'dlc', label: 'DLCs' },
+  { value: 'standalone_expansion', label: 'Standalone expansion' },
+  { value: 'mod', label: 'Mod' },
+  { value: 'episode', label: 'Episode' },
+  { value: 'season', label: 'Season' },
+  { value: 'remake', label: 'Remake' },
+  { value: 'remaster', label: 'Remaster' },
+  { value: 'expanded_game', label: 'Expanded game' },
+  { value: 'port', label: 'Port' },
+  { value: 'fork', label: 'Fork' },
+  { value: 'pack', label: 'Pack' },
+  { value: 'update', label: 'Update' },
 ];
 
 const DISCOUNT_PRESETS = [

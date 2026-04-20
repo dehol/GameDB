@@ -41,4 +41,5 @@ public record IgdbGame
     public double? Rating { get; init; }
     public int? RatingCount { get; init; }
     public bool IsDlc { get; init; }
+    public string? GameType { get; init; }
 }

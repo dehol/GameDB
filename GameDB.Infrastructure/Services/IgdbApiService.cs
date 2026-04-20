@@ -43,6 +43,24 @@ public class IgdbApiService : IIgdbApiService
 
     // Rate limit: 4 req/sec
     private readonly SemaphoreSlim _rateLimiter = new(4, 4);
+    private static readonly IReadOnlyDictionary<int, string> GameTypeMap = new Dictionary<int, string>
+    {
+        [0] = "main_game",
+        [1] = "dlc_addon",
+        [2] = "expansion",
+        [3] = "bundle",
+        [4] = "standalone_expansion",
+        [5] = "mod",
+        [6] = "episode",
+        [7] = "season",
+        [8] = "remake",
+        [9] = "remaster",
+        [10] = "expanded_game",
+        [11] = "port",
+        [12] = "fork",
+        [13] = "pack",
+        [14] = "update"
+    };
 
     public IgdbApiService(HttpClient http, ILogger<IgdbApiService> logger, IgdbSettings settings)
     {
@@ -285,6 +303,8 @@ public class IgdbApiService : IIgdbApiService
         if (coverUrl != null && coverUrl.StartsWith("//"))
             coverUrl = "https:" + coverUrl;
 
+        var mappedGameType = ToGameTypeName(raw.GameType ?? raw.Category);
+
         return new IgdbGame
         {
             Id                = raw.Id,
@@ -300,19 +320,15 @@ public class IgdbApiService : IIgdbApiService
             CoverUrl          = coverUrl,
             Rating            = raw.Rating,
             RatingCount       = raw.RatingCount,
-            IsDlc             = IsNonMainContent(raw),
+            IsDlc             = mappedGameType is not null && mappedGameType != "main_game",
+            GameType          = mappedGameType
         };
     }
 
-    private static bool IsNonMainContent(IgdbRawGame raw)
-    {
-        var contentType = raw.GameType ?? raw.Category;
-        var isNonMainType = contentType.HasValue && contentType.Value != 0;
-        var hasParentGame = raw.ParentGame.HasValue;
-        var isVersion = raw.VersionParent.HasValue || !string.IsNullOrWhiteSpace(raw.VersionTitle);
-
-        return isNonMainType || hasParentGame || isVersion;
-    }
+    private static string? ToGameTypeName(int? gameType) =>
+        gameType.HasValue && GameTypeMap.TryGetValue(gameType.Value, out var name)
+            ? name
+            : null;
 
     // ── Raw JSON models ───────────────────────────────────────────────────
 

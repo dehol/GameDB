@@ -29,6 +29,7 @@ public class Game
     public double? Rating { get; set; }
     public int? RatingCount { get; set; }
     public bool IsDlc { get; set; }
+    public string? ContentType { get; set; }
     
     public Developer? Developer { get; set; }
     public Publisher? Publisher { get; set; }

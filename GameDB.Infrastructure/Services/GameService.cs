@@ -55,41 +55,11 @@ public class GameService
             query = query.Where(g => gameIds.Contains(g.GameId));
         }
 
-        query = contentType?.ToLowerInvariant() switch
+        var normalizedContentType = NormalizeContentTypeFilter(contentType);
+        if (!string.IsNullOrEmpty(normalizedContentType) && normalizedContentType != "all")
         {
-            "main_game" or "main-game" or "main" or "game" or "games" => query.Where(g =>
-                !g.is_dlc &&
-                !EF.Functions.ILike(g.Title, "%bundle%") &&
-                !EF.Functions.ILike(g.Title, "%collection%") &&
-                !EF.Functions.ILike(g.Title, "% pack%") &&
-                !EF.Functions.ILike(g.Title, "%pack %") &&
-                !EF.Functions.ILike(g.Title, "% pack") &&
-                !EF.Functions.ILike(g.Title, "pack %") &&
-                !EF.Functions.ILike(g.Title, "pack") &&
-                !EF.Functions.ILike(g.Title, "% dlc%") &&
-                !EF.Functions.ILike(g.Title, "%map pack%") &&
-                !EF.Functions.ILike(g.Title, "%season pass%") &&
-                !EF.Functions.ILike(g.Title, "%soundtrack%") &&
-                !EF.Functions.ILike(g.Title, "% add-on%") &&
-                !EF.Functions.ILike(g.Title, "% addon%")),
-            "bundle" or "bundles" => query.Where(g =>
-                EF.Functions.ILike(g.Title, "%bundle%") ||
-                EF.Functions.ILike(g.Title, "%collection%")),
-            "dlc" or "dlcs" => query.Where(g =>
-                g.is_dlc ||
-                EF.Functions.ILike(g.Title, "% dlc%") ||
-                EF.Functions.ILike(g.Title, "% pack%") ||
-                EF.Functions.ILike(g.Title, "%pack %") ||
-                EF.Functions.ILike(g.Title, "% pack") ||
-                EF.Functions.ILike(g.Title, "pack %") ||
-                EF.Functions.ILike(g.Title, "pack") ||
-                EF.Functions.ILike(g.Title, "%map pack%") ||
-                EF.Functions.ILike(g.Title, "%season pass%") ||
-                EF.Functions.ILike(g.Title, "%soundtrack%") ||
-                EF.Functions.ILike(g.Title, "% add-on%") ||
-                EF.Functions.ILike(g.Title, "% addon%")),
-            _ => query
-        };
+            query = query.Where(g => (g.content_type ?? "main_game") == normalizedContentType);
+        }
 
         // Count before pagination
         var totalCount = await query.CountAsync();
@@ -115,6 +85,21 @@ public class GameService
             .ToListAsync();
 
         return (items, totalCount);
+    }
+
+    private static string? NormalizeContentTypeFilter(string? contentType)
+    {
+        if (string.IsNullOrWhiteSpace(contentType))
+            return null;
+
+        return contentType.Trim().ToLowerInvariant() switch
+        {
+            "all" => "all",
+            "main-game" or "main" or "game" or "games" => "main_game",
+            "dlc" or "dlcs" => "dlc_addon",
+            "bundles" => "bundle",
+            _ => contentType.Trim().ToLowerInvariant()
+        };
     }
 
     public async Task<GameDetailsDto?> GetByIdAsync(int gameId)

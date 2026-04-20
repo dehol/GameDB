@@ -22,6 +22,7 @@ public record GameCatalogRow
     public double? rating { get; init; }
     public int? rating_count { get; init; }
     public bool is_dlc { get; init; }
+    public string? content_type { get; init; }
 
     // Cover art source — populated from Game.CoverUrl + Steam fallback
     public string? cover_source { get; init; }

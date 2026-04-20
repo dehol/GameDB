@@ -27,6 +27,7 @@ public record GameImport
     public double? Rating { get; init; }
     public int? RatingCount { get; init; }
     public bool IsDlc { get; init; }
+    public string? ContentType { get; init; }
 }
 
 /// <summary>

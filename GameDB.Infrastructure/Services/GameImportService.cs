@@ -118,7 +118,8 @@ public class GameImportService
             CoverUrl   = g.CoverUrl,
             Rating     = g.Rating,
             RatingCount = g.RatingCount,
-            IsDlc = g.IsDlc
+            IsDlc = g.IsDlc,
+            ContentType = g.GameType
         }).Where(g => !string.IsNullOrEmpty(g.NormalizedTitle)).ToList();
 
         // Filter out games with no store offers
@@ -376,6 +377,12 @@ public class GameImportService
                         needsUpdate = true;
                     }
 
+                    if (!string.Equals(existing.ContentType, import.ContentType, StringComparison.Ordinal))
+                    {
+                        existing.ContentType = import.ContentType;
+                        needsUpdate = true;
+                    }
+
                     if (!string.IsNullOrEmpty(import.CoverUrl) && existing.CoverUrl != import.CoverUrl)
                     {
                         existing.CoverUrl = import.CoverUrl;
@@ -404,7 +411,8 @@ public class GameImportService
                         UpdatedAt       = DateTime.UtcNow,
                         Rating          = import.Rating,
                         RatingCount     = import.RatingCount,
-                        IsDlc           = import.IsDlc
+                        IsDlc           = import.IsDlc,
+                        ContentType     = import.ContentType
                     };
 
                     newGames.Add(game);
