@@ -177,19 +177,20 @@ function HeartIcon({ filled }) {
   );
 }
 
-function GameRow({ game, inWishlist, onWishlist, onClick, coverUrls }) {
+function GameRow({ game, inWishlist, onWishlist, onClick }) {
   const [hov, setHov] = useState(false);
   const [coverFailed, setCoverFailed] = useState(false);
   const [coverIndex, setCoverIndex] = useState(0);
   const genres = game.genres ? game.genres.split(', ') : [];
   const hue = coverHue(game.title);
   const hasDiscount = game.max_discount > 0;
-  const currentCoverUrl = coverUrls?.[coverIndex] || null;
+  const coverUrls = getCoverUrls(game.cover_source);
+  const currentCoverUrl = coverUrls[coverIndex] || null;
 
   useEffect(() => {
     setCoverFailed(false);
     setCoverIndex(0);
-  }, [game.gameId, coverUrls]);
+  }, [game.gameId, game.cover_source]);
 
   return (
     <div
@@ -329,7 +330,6 @@ function GameRow({ game, inWishlist, onWishlist, onClick, coverUrls }) {
 /* ─── Main Page ───────────────────────────────────────────────────── */
 export default function CatalogPage() {
   const [games, setGames] = useState([]);
-  const [coverUrls, setCoverUrls] = useState({});
   const [total, setTotal] = useState(0);
   const [loading, setLoading] = useState(false);
   const [wishlistIds, setWishlistIds] = useState(new Set());
@@ -388,34 +388,6 @@ export default function CatalogPage() {
   }, [debouncedSearch, genreId, shopId, maxPrice, minDiscount, onSaleOnly, sortBy, contentType, page]);
 
   useEffect(() => { fetchGames(); }, [fetchGames]);
-
-  useEffect(() => {
-    let cancelled = false;
-    const pending = games.filter(g => coverUrls[g.gameId] === undefined).map(g => g.gameId);
-    if (pending.length === 0) return;
-
-    (async () => {
-      let coversByGameId = {};
-      try {
-        coversByGameId = await api.getGameCovers(pending);
-      } catch {}
-
-      if (cancelled) return;
-      setCoverUrls(prev => {
-        const next = { ...prev };
-        for (const gameId of pending) {
-          if (next[gameId] === undefined) next[gameId] = null;
-        }
-        for (const [gameId, coverSource] of Object.entries(coversByGameId || {})) {
-          const urls = getCoverUrls(coverSource);
-          next[Number(gameId)] = urls.length > 0 ? urls : null;
-        }
-        return next;
-      });
-    })();
-
-    return () => { cancelled = true; };
-  }, [games, coverUrls]);
 
   const toggleWishlist = async (gameId) => {
     if (!isAuth) { message.warning('Please log in'); return; }
@@ -602,7 +574,6 @@ export default function CatalogPage() {
             <GameRow
               key={g.gameId}
               game={g}
-              coverUrls={coverUrls[g.gameId]}
               inWishlist={wishlistIds.has(g.gameId)}
               onWishlist={() => toggleWishlist(g.gameId)}
               onClick={() => navigate(`/games/${g.gameId}`)}
