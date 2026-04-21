@@ -44,10 +44,10 @@ const DISCOUNT_PRESETS = [
 
 const PRICE_PRESETS = [
   { value: '', label: 'Any' },
-  { value: '5', label: '<$5' },
-  { value: '10', label: '<$10' },
-  { value: '20', label: '<$20' },
-  { value: '40', label: '<$40' },
+  { value: '5', label: 'Under $5' },
+  { value: '10', label: 'Under $10' },
+  { value: '20', label: 'Under $20' },
+  { value: '40', label: 'Under $40' },
 ];
 
 function FilterLabel({ children }) {
@@ -92,7 +92,9 @@ function PresetPicker({ presets, value, onChange, accentVar = '--green' }) {
   return (
     <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap' }}>
       {presets.map(p => {
-        const active = String(value) === String(p.value);
+        const active = typeof p.value === 'number'
+          ? Number(value) === p.value
+          : value === p.value;
         return (
           <button key={String(p.value)} onClick={() => onChange(active ? (typeof p.value === 'number' ? 0 : '') : p.value)} style={{
             padding: '3px 8px', borderRadius: 20,
@@ -178,7 +180,7 @@ export default function FilterPanel({
             aria-checked={onSaleOnly}
             tabIndex={0}
             onClick={() => wrap(setOnSaleOnly)(v => !v)}
-            onKeyDown={e => e.key === 'Enter' && wrap(setOnSaleOnly)(v => !v)}
+            onKeyDown={e => (e.key === 'Enter' || e.key === ' ') && wrap(setOnSaleOnly)(v => !v)}
             style={{
               width: 32, height: 18, borderRadius: 9,
               background: onSaleOnly ? 'var(--green)' : 'var(--bg-input)',

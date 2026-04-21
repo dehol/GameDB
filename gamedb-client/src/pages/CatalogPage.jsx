@@ -275,7 +275,7 @@ export default function CatalogPage() {
             <PageBtn label="‹" disabled={page === 1} onClick={() => setPage(p => p - 1)} />
             {paginationRange(page, totalPages).map((p, i) =>
               p === '…'
-                ? <span key={`ellipsis-${i}`} style={{ padding: '0 4px', color: 'var(--text-muted)', lineHeight: '32px' }}>…</span>
+                ? <span key={`ellipsis-${i}`} aria-label="More pages" style={{ padding: '0 4px', color: 'var(--text-muted)', lineHeight: '32px' }}>…</span>
                 : <PageBtn key={p} label={p} active={p === page} onClick={() => setPage(p)} />
             )}
             <PageBtn label="›" disabled={page === totalPages} onClick={() => setPage(p => p + 1)} />

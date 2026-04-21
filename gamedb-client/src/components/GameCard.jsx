@@ -26,7 +26,7 @@ export default function GameCard({ game, inWishlist, onWishlist, onClick }) {
       role="button"
       tabIndex={0}
       onClick={onClick}
-      onKeyDown={e => e.key === 'Enter' && onClick?.()}
+      onKeyDown={e => (e.key === 'Enter' || e.key === ' ') && onClick?.()}
       onMouseEnter={() => setHov(true)}
       onMouseLeave={() => setHov(false)}
       style={{
