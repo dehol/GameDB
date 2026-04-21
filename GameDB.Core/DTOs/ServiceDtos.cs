@@ -56,7 +56,7 @@ public record SyncError(int GameOfferId, string? ExternalId, string ErrorMessage
 /// <summary>
 /// User's wishlist item
 /// </summary>
-public record WishlistItemDto(int GameId, string GameTitle, DateTime AddedAt, string? SourceShop);
+public record WishlistItemDto(int GameId, string GameTitle, DateTime AddedAt, List<string>? SourceShops);
 
 /// <summary>
 /// User's alert from vw_user_alerts view

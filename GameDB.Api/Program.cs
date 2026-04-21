@@ -9,7 +9,6 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.IdentityModel.Tokens;
 using System.Text;
 using System.Threading.Channels;
-using System.Text.Json.Serialization;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -24,6 +23,8 @@ builder.Services.Configure<RawgSettings>(
     builder.Configuration.GetSection("Rawg"));
 builder.Services.Configure<ImportSettings>(
     builder.Configuration.GetSection("Import"));
+builder.Services.Configure<OAuthSettings>(
+    builder.Configuration.GetSection("OAuth"));
 
 builder.Services.AddSingleton(sp =>
     sp.GetRequiredService<Microsoft.Extensions.Options.IOptions<IgdbSettings>>().Value);
@@ -31,6 +32,8 @@ builder.Services.AddSingleton(sp =>
     sp.GetRequiredService<Microsoft.Extensions.Options.IOptions<RawgSettings>>().Value);
 builder.Services.AddSingleton(sp =>
     sp.GetRequiredService<Microsoft.Extensions.Options.IOptions<ImportSettings>>().Value);
+builder.Services.AddSingleton(sp =>
+    sp.GetRequiredService<Microsoft.Extensions.Options.IOptions<OAuthSettings>>().Value);
 
 // Services
 builder.Services.AddScoped<AuthService>();
@@ -42,6 +45,7 @@ builder.Services.AddScoped<AlertService>();
 builder.Services.AddScoped<NotificationService>();
 builder.Services.AddScoped<LibraryService>();
 builder.Services.AddScoped<GameImportService>();
+builder.Services.AddScoped<ShopOAuthService>();
 builder.Services.AddScoped<ReferenceDataCache>();
 
 // IGDB API Client

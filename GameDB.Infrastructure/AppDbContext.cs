@@ -21,6 +21,7 @@ public class AppDbContext : DbContext
     public DbSet<GameOffer> GameOffers => Set<GameOffer>();
     public DbSet<PriceHistory> PriceHistories => Set<PriceHistory>();
     public DbSet<Wishlist> Wishlists => Set<Wishlist>();
+    public DbSet<WishlistSource> WishlistSources => Set<WishlistSource>();
     public DbSet<Alert> Alerts => Set<Alert>();
     public DbSet<UserLibrary> UserLibraries => Set<UserLibrary>();
     public DbSet<GuestSession> GuestSessions => Set<GuestSession>();
@@ -44,6 +45,7 @@ public class AppDbContext : DbContext
         mb.Entity<GameOffer>().ToTable("GameOffer");
         mb.Entity<PriceHistory>().ToTable("PriceHistory");
         mb.Entity<Wishlist>().ToTable("Wishlist");
+        mb.Entity<WishlistSource>().ToTable("WishlistSource");
         mb.Entity<Alert>().ToTable("Alert");
         mb.Entity<UserLibrary>().ToTable("UserLibrary");
         mb.Entity<GuestSession>().ToTable("GuestSession");
@@ -55,6 +57,7 @@ public class AppDbContext : DbContext
         // Composite PKs
         mb.Entity<GameGenre>().HasKey(gg => new { gg.GameId, gg.GenreId });
         mb.Entity<Wishlist>().HasKey(w => new { w.UserId, w.GameId });
+        mb.Entity<WishlistSource>().HasKey(ws => new { ws.UserId, ws.GameId, ws.ShopId });
         mb.Entity<UserLibrary>().HasKey(ul => new { ul.UserId, ul.GameId, ul.ShopId });
 
         // Unique constraints / indexes
@@ -99,12 +102,24 @@ public class AppDbContext : DbContext
             .HasForeignKey(ph => ph.GameOfferId)
             .OnDelete(DeleteBehavior.Cascade);
 
-        // Wishlist FK to SourceShop
-        mb.Entity<Wishlist>()
-            .HasOne(w => w.SourceShop)
+        // WishlistSource relationships
+        mb.Entity<WishlistSource>()
+            .HasOne(ws => ws.User)
             .WithMany()
-            .HasForeignKey(w => w.SourceShopId)
-            .OnDelete(DeleteBehavior.SetNull);
+            .HasForeignKey(ws => ws.UserId)
+            .OnDelete(DeleteBehavior.Cascade);
+
+        mb.Entity<WishlistSource>()
+            .HasOne(ws => ws.Game)
+            .WithMany()
+            .HasForeignKey(ws => ws.GameId)
+            .OnDelete(DeleteBehavior.Cascade);
+
+        mb.Entity<WishlistSource>()
+            .HasOne(ws => ws.Shop)
+            .WithMany()
+            .HasForeignKey(ws => ws.ShopId)
+            .OnDelete(DeleteBehavior.Cascade);
 
         mb.Entity<GuestSession>()
             .HasOne(gs => gs.User)

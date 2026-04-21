@@ -11,7 +11,13 @@ namespace GameDB.Api.Controllers;
 public class WishlistController : ControllerBase
 {
     private readonly WishlistService _wishlist;
-    public WishlistController(WishlistService wishlist) => _wishlist = wishlist;
+    private readonly ShopOAuthService _oauth;
+
+    public WishlistController(WishlistService wishlist, ShopOAuthService oauth)
+    {
+        _wishlist = wishlist;
+        _oauth = oauth;
+    }
 
     private int GetUserId() => int.Parse(User.FindFirstValue(ClaimTypes.NameIdentifier)!);
 
@@ -45,12 +51,33 @@ public class WishlistController : ControllerBase
         return Ok(new { added, message });
     }
 
-    [HttpPost("import-steam")]
+    /// <summary>
+    /// Import wishlist from a specific shop.
+    /// Requires the user to have linked their shop account via OAuth first.
+    /// </summary>
+    [HttpPost("import/{shop}")]
     [Authorize(Roles = "user,admin")]
-    public async Task<IActionResult> ImportSteam()
+    public async Task<IActionResult> Import(string shop)
     {
-        var (imported, error) = await _wishlist.ImportSteamAsync(GetUserId());
-        if (error != null && imported == 0) return BadRequest(error);
+        var shopId = ShopOAuthService.ShopSlugToId(shop);
+        if (shopId == null)
+            return BadRequest(new { error = $"Unknown shop: {shop}. Supported: steam, gog, egs" });
+
+        var userId = GetUserId();
+
+        // Check if user has linked the shop account
+        if (!await _oauth.HasValidAuthAsync(userId, shopId.Value))
+        {
+            var (authUrl, _) = _oauth.GetAuthorizationUrl(userId, shopId.Value);
+            return StatusCode(403, new
+            {
+                error = $"{shop} account not linked. Please link your account first.",
+                authorizeUrl = authUrl
+            });
+        }
+
+        var (imported, error) = await _wishlist.ImportAsync(userId, shopId.Value);
+        if (error != null && imported == 0) return BadRequest(new { error, imported });
         return Ok(new { imported, message = error });
     }
 }

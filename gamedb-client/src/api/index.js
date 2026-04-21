@@ -73,7 +73,12 @@ export const api = {
   addToWishlist: (gameId) => request(`/wishlist/${gameId}`, { method: 'POST' }),
   removeFromWishlist: (gameId) => request(`/wishlist/${gameId}`, { method: 'DELETE' }),
   toggleWishlist: (gameId) => request(`/wishlist/${gameId}/toggle`, { method: 'POST' }),
-  importSteam: () => request('/wishlist/import-steam', { method: 'POST' }),
+  importWishlist: (shop) => request(`/wishlist/import/${shop}`, { method: 'POST' }),
+
+  // OAuth
+  getOAuthAuthorizeUrl: (shop) => request(`/oauth/${shop}/authorize`),
+  getOAuthStatus: (shop) => request(`/oauth/${shop}/status`),
+  unlinkShop: (shop) => request(`/oauth/${shop}/unlink`, { method: 'DELETE' }),
 
   // Profile
   getProfile: () => request('/profile'),
