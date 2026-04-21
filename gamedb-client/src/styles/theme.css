@@ -1,0 +1,57 @@
+/* ── CSS design tokens ─────────────────────────────────────────────── */
+:root {
+  /* Colours */
+  --primary:       #4f9cf9;
+  --primary-hover: #6db0ff;
+  --primary-dim:   rgba(79,156,249,0.15);
+
+  --green:         #3dbf50;
+  --green-dim:     rgba(61,191,80,0.12);
+  --red:           #f5222d;
+  --red-dim:       rgba(245,34,45,0.12);
+  --blue:          #1890ff;
+  --orange:        #fa8c16;
+
+  /* Backgrounds */
+  --bg-base:       #0f0f12;
+  --bg-elevated:   #141419;
+  --bg-card:       #1a1a22;
+  --bg-input:      #12121a;
+  --bg-active:     #1e1e2a;
+  --bg-hover:      #21212e;
+
+  /* Text */
+  --text-primary:   #e8e8f0;
+  --text-secondary: #9898b0;
+  --text-muted:     #5a5a78;
+
+  /* Borders */
+  --border:        #2a2a3a;
+  --border-hover:  #4f9cf9;
+
+  /* Radii */
+  --radius:    6px;
+  --radius-lg: 10px;
+  --radius-xl: 16px;
+
+  /* Shadows */
+  --shadow-sm: 0 1px 3px rgba(0,0,0,0.4);
+  --shadow-md: 0 4px 16px rgba(0,0,0,0.5);
+  --shadow-lg: 0 8px 32px rgba(0,0,0,0.6);
+  --shadow-card: 0 2px 8px rgba(0,0,0,0.35);
+
+  /* Transitions */
+  --transition-fast: 120ms ease;
+  --transition:      200ms ease;
+  --transition-slow: 350ms ease;
+
+  /* Typography */
+  --font-sans:    'Inter', 'Segoe UI', system-ui, -apple-system, sans-serif;
+  --font-mono:    'JetBrains Mono', 'Fira Code', 'Cascadia Code', monospace;
+  --font-display: 'Inter', system-ui, sans-serif;
+
+  /* Layout */
+  --nav-height:   64px;
+  --sidebar-width: 220px;
+  --content-max:  1400px;
+}
