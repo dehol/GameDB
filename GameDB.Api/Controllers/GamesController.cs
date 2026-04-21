@@ -61,7 +61,7 @@ public class GamesController : ControllerBase
     [HttpGet("covers")]
     public async Task<IActionResult> GetCovers([FromQuery] List<int> gameIds)
     {
-        var coverIds = await _games.GetSteamCoverIdsAsync(gameIds ?? new List<int>());
+        var coverIds = await _games.GetCoverSourcesAsync(gameIds ?? new List<int>());
         return Ok(coverIds);
     }
 

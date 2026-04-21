@@ -16,7 +16,12 @@ public class Game
     /// RAWG API game ID for deduplication
     /// </summary>
     public int? RawgId { get; set; }
-    
+
+    /// <summary>
+    /// Cached cover image URL (resolved from Steam CDN, RAWG, etc.)
+    /// </summary>
+    public string? CoverUrl { get; set; }
+
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
     public DateTime UpdatedAt { get; set; } = DateTime.UtcNow;
     
@@ -24,6 +29,7 @@ public class Game
     public double? Rating { get; set; }
     public int? RatingCount { get; set; }
     public bool IsDlc { get; set; }
+    public string? ContentType { get; set; }
     
     public Developer? Developer { get; set; }
     public Publisher? Publisher { get; set; }

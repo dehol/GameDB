@@ -35,8 +35,20 @@ const SORT_OPTIONS = [
 const CONTENT_TYPE_OPTIONS = [
   { value: 'all', label: 'All' },
   { value: 'main_game', label: 'Main game' },
+  { value: 'dlc_addon', label: 'DLC / Add-on' },
+  { value: 'expansion', label: 'Expansion' },
   { value: 'bundle', label: 'Bundle' },
-  { value: 'dlc', label: 'DLCs' },
+  { value: 'standalone_expansion', label: 'Standalone expansion' },
+  { value: 'mod', label: 'Mod' },
+  { value: 'episode', label: 'Episode' },
+  { value: 'season', label: 'Season' },
+  { value: 'remake', label: 'Remake' },
+  { value: 'remaster', label: 'Remaster' },
+  { value: 'expanded_game', label: 'Expanded game' },
+  { value: 'port', label: 'Port' },
+  { value: 'fork', label: 'Fork' },
+  { value: 'pack', label: 'Pack' },
+  { value: 'update', label: 'Update' },
 ];
 
 const DISCOUNT_PRESETS = [
@@ -62,9 +74,39 @@ function coverHue(title = '') {
   return [...title].reduce((acc, c) => acc + c.charCodeAt(0), 0) % 360;
 }
 
-function getSteamCoverUrl(steamAppId) {
-  if (!steamAppId || !/^\d+$/.test(String(steamAppId))) return null;
-  return `https://shared.cloudflare.steamstatic.com/store_item_assets/steam/apps/${steamAppId}/capsule_184x69.jpg`;
+function extractSteamAppId(value) {
+  if (!value) return null;
+  const normalized = String(value).trim();
+  if (/^\d+$/.test(normalized)) return normalized;
+  const m = normalized.match(/\/app\/(\d+)(?:[/?#]|$)/i);
+  return m ? m[1] : null;
+}
+
+function getSteamCoverUrls(steamAppId) {
+  const appId = extractSteamAppId(steamAppId);
+  if (!appId) return [];
+  const base = `https://cdn.cloudflare.steamstatic.com/steam/apps/${appId}`;
+  return [
+    `${base}/header.jpg`,
+    `${base}/capsule_231x87.jpg`,
+    `${base}/capsule_184x69.jpg`,
+  ];
+}
+
+function getCoverUrls(coverSource) {
+  if (!coverSource) return [];
+  const src = String(coverSource);
+  // "steam:{appId}" — generate multiple CDN fallback URLs
+  if (src.startsWith('steam:')) {
+    const appId = src.slice(6);
+    return getSteamCoverUrls(appId);
+  }
+  // Pure digits — treat as Steam AppId for backward compat
+  if (/^\d+$/.test(src)) return getSteamCoverUrls(src);
+  // Full URL (IGDB cover, RAWG image, etc.) — use directly
+  if (/^https?:\/\//i.test(src)) return [src];
+  // URL-like but no scheme — try as-is
+  return [src];
 }
 
 /* ─── Sub-components ──────────────────────────────────────────────── */
@@ -147,12 +189,20 @@ function HeartIcon({ filled }) {
   );
 }
 
-function GameRow({ game, inWishlist, onWishlist, onClick, coverUrl }) {
+function GameRow({ game, inWishlist, onWishlist, onClick }) {
   const [hov, setHov] = useState(false);
   const [coverFailed, setCoverFailed] = useState(false);
+  const [coverIndex, setCoverIndex] = useState(0);
   const genres = game.genres ? game.genres.split(', ') : [];
   const hue = coverHue(game.title);
   const hasDiscount = game.max_discount > 0;
+  const coverUrls = getCoverUrls(game.cover_source);
+  const currentCoverUrl = coverUrls[coverIndex] || null;
+
+  useEffect(() => {
+    setCoverFailed(false);
+    setCoverIndex(0);
+  }, [game.gameId, game.cover_source]);
 
   return (
     <div
@@ -170,13 +220,19 @@ function GameRow({ game, inWishlist, onWishlist, onClick, coverUrl }) {
       }}
     >
       {/* Cover */}
-      {!coverFailed && coverUrl ? (
+      {!coverFailed && currentCoverUrl ? (
         <img
-          src={coverUrl}
+          src={currentCoverUrl}
           alt={game.title}
           loading="lazy"
           referrerPolicy="no-referrer"
-          onError={() => setCoverFailed(true)}
+          onError={() => {
+            if (Array.isArray(coverUrls) && coverIndex < coverUrls.length - 1) {
+              setCoverIndex(i => i + 1);
+              return;
+            }
+            setCoverFailed(true);
+          }}
           style={{
             width: 52, height: 70, flexShrink: 0, objectFit: 'cover',
             borderRadius: 'var(--radius)', border: '1px solid var(--border)',
@@ -286,7 +342,6 @@ function GameRow({ game, inWishlist, onWishlist, onClick, coverUrl }) {
 /* ─── Main Page ───────────────────────────────────────────────────── */
 export default function CatalogPage() {
   const [games, setGames] = useState([]);
-  const [coverUrls, setCoverUrls] = useState({});
   const [total, setTotal] = useState(0);
   const [loading, setLoading] = useState(false);
   const [wishlistIds, setWishlistIds] = useState(new Set());
@@ -345,33 +400,6 @@ export default function CatalogPage() {
   }, [debouncedSearch, genreId, shopId, maxPrice, minDiscount, onSaleOnly, sortBy, contentType, page]);
 
   useEffect(() => { fetchGames(); }, [fetchGames]);
-
-  useEffect(() => {
-    let cancelled = false;
-    const pending = games.filter(g => coverUrls[g.gameId] === undefined).map(g => g.gameId);
-    if (pending.length === 0) return;
-
-    (async () => {
-      let coversByGameId = {};
-      try {
-        coversByGameId = await api.getGameCovers(pending);
-      } catch {}
-
-      if (cancelled) return;
-      setCoverUrls(prev => {
-        const next = { ...prev };
-        for (const gameId of pending) {
-          if (next[gameId] === undefined) next[gameId] = null;
-        }
-        for (const [gameId, steamAppId] of Object.entries(coversByGameId || {})) {
-          next[Number(gameId)] = getSteamCoverUrl(steamAppId);
-        }
-        return next;
-      });
-    })();
-
-    return () => { cancelled = true; };
-  }, [games, coverUrls]);
 
   const toggleWishlist = async (gameId) => {
     if (!isAuth) { message.warning('Please log in'); return; }
@@ -558,7 +586,6 @@ export default function CatalogPage() {
             <GameRow
               key={g.gameId}
               game={g}
-              coverUrl={coverUrls[g.gameId]}
               inWishlist={wishlistIds.has(g.gameId)}
               onWishlist={() => toggleWishlist(g.gameId)}
               onClick={() => navigate(`/games/${g.gameId}`)}
@@ -577,7 +604,7 @@ export default function CatalogPage() {
             <PageBtn label="‹" disabled={page === 1} onClick={() => setPage(p => p - 1)} />
             {paginationRange(page, totalPages).map((p, i) =>
               p === '…'
-                ? <span key={i} style={{ padding: '0 4px', color: 'var(--text-muted)', lineHeight: '32px' }}>…</span>
+                ? <span key={`dots-${i}`} style={{ padding: '0 4px', color: 'var(--text-muted)', lineHeight: '32px' }}>…</span>
                 : <PageBtn key={p} label={p} active={p === page} onClick={() => setPage(p)} />
             )}
             <PageBtn label="›" disabled={page === totalPages} onClick={() => setPage(p => p + 1)} />

@@ -36,13 +36,31 @@ public class IgdbApiService : IIgdbApiService
     private const int BatchSize = 500;
 
     // Query profiles from strict to permissive for resilience
-    private static readonly string StrictPcContentWhereClause = $"platforms = ({PcPlatformId}) & category = (0,1,2,4) & websites != null";
+    private static readonly string StrictPcContentWhereClause = $"platforms = ({PcPlatformId}) & game_type = (0,1,2,4) & websites != null";
     private static readonly string PcWithWebsitesWhereClause = $"platforms = ({PcPlatformId}) & websites != null";
-    private const string MainWithWebsitesWhereClause = "category = 0 & websites != null";
+    private const string MainWithWebsitesWhereClause = "game_type = 0 & websites != null";
     private const string WebsitesOnlyWhereClause = "websites != null";
 
     // Rate limit: 4 req/sec
     private readonly SemaphoreSlim _rateLimiter = new(4, 4);
+    private static readonly IReadOnlyDictionary<int, string> GameTypeMap = new Dictionary<int, string>
+    {
+        [0] = "main_game",
+        [1] = "dlc_addon",
+        [2] = "expansion",
+        [3] = "bundle",
+        [4] = "standalone_expansion",
+        [5] = "mod",
+        [6] = "episode",
+        [7] = "season",
+        [8] = "remake",
+        [9] = "remaster",
+        [10] = "expanded_game",
+        [11] = "port",
+        [12] = "fork",
+        [13] = "pack",
+        [14] = "update"
+    };
 
     public IgdbApiService(HttpClient http, ILogger<IgdbApiService> logger, IgdbSettings settings)
     {
@@ -107,8 +125,8 @@ public class IgdbApiService : IIgdbApiService
 
             foreach (var raw in batch)
             {
-                if (excludeIgdbIds?.Contains(raw.Id) == true) continue;
                 if (includeIgdbIds != null && !includeIgdbIds.Contains(raw.Id)) continue;
+                if (excludeIgdbIds?.Contains(raw.Id) == true) continue;
 
                 var game = MapGame(raw);
                 // Only include games available on at least one store
@@ -135,12 +153,49 @@ public class IgdbApiService : IIgdbApiService
         return result;
     }
 
+    // ── Cover batch lookup ──────────────────────────────────────────────
+
+    public async Task<Dictionary<int, string>> GetCoversByIdsAsync(IEnumerable<int> igdbIds, CancellationToken ct = default)
+    {
+        await EnsureTokenAsync(ct);
+
+        var result = new Dictionary<int, string>();
+        var idList = igdbIds.Distinct().ToList();
+
+        // IGDB allows ~500 IDs per request via "where id = (...)"
+        foreach (var chunk in idList.Chunk(BatchSize))
+        {
+            var idSet = string.Join(",", chunk);
+            var query = $"""
+                fields id, cover.url;
+                where id = ({idSet});
+                limit {BatchSize};
+                """;
+
+            var batch = await PostQueryAsync<List<IgdbRawCoverLookup>>("games", query, ct);
+            if (batch == null) continue;
+
+            foreach (var item in batch)
+            {
+                var url = item.Cover?.Url;
+                if (string.IsNullOrWhiteSpace(url)) continue;
+                if (url.StartsWith("//")) url = "https:" + url;
+                result[item.Id] = url;
+            }
+
+            await Task.Delay(300, ct);
+        }
+
+        return result;
+    }
+
     // ── Query builder ─────────────────────────────────────────────────────
 
     private static string BuildQuery(int offset, string whereClause) => $"""
         fields name, summary, first_release_date,
                rating, rating_count,
-               category,
+               category, game_type, parent_game, version_parent, version_title,
+               cover.url,
                genres.name,
                involved_companies.company.name,
                involved_companies.developer,
@@ -243,6 +298,13 @@ public class IgdbApiService : IIgdbApiService
         var egsUrl   = raw.Websites?
             .FirstOrDefault(w => w.Category == EgsCategory || IsEgsUrl(w.Url))?.Url;
 
+        // IGDB returns relative URLs like "//images.igdb.com/..." — make absolute
+        var coverUrl = raw.Cover?.Url;
+        if (coverUrl != null && coverUrl.StartsWith("//"))
+            coverUrl = "https:" + coverUrl;
+
+        var mappedGameType = ToGameTypeName(raw.GameType ?? raw.Category);
+
         return new IgdbGame
         {
             Id                = raw.Id,
@@ -255,11 +317,18 @@ public class IgdbApiService : IIgdbApiService
             SteamUrl          = steamUrl,
             GogUrl            = gogUrl,
             EgsUrl            = egsUrl,
+            CoverUrl          = coverUrl,
             Rating            = raw.Rating,
             RatingCount       = raw.RatingCount,
-            IsDlc             = raw.Category is 1 or 2 or 4 or 13,
+            IsDlc             = mappedGameType is not null && mappedGameType != "main_game",
+            GameType          = mappedGameType
         };
     }
+
+    private static string? ToGameTypeName(int? gameType) =>
+        gameType.HasValue && GameTypeMap.TryGetValue(gameType.Value, out var name)
+            ? name
+            : null;
 
     // ── Raw JSON models ───────────────────────────────────────────────────
 
@@ -271,9 +340,18 @@ public class IgdbApiService : IIgdbApiService
         double? Rating,
         [property: JsonPropertyName("rating_count")] int? RatingCount,
         int? Category,
+        [property: JsonPropertyName("game_type")] int? GameType,
+        [property: JsonPropertyName("parent_game")] int? ParentGame,
+        [property: JsonPropertyName("version_parent")] int? VersionParent,
+        [property: JsonPropertyName("version_title")] string? VersionTitle,
+        IgdbCover? Cover,
         List<IgdbGenre>? Genres,
         [property: JsonPropertyName("involved_companies")] List<IgdbInvolvedCompany>? InvolvedCompanies,
         List<IgdbWebsite>? Websites);
+
+    private record IgdbCover(string? Url);
+
+    private record IgdbRawCoverLookup(int Id, IgdbCover? Cover);
 
     private record IgdbGenre(
         [property: JsonPropertyName("id")] int Id, 

@@ -93,7 +93,9 @@ public class GameImportService
         var includeIgdbIds = options.IgdbGameIds is { Count: > 0 }
             ? options.IgdbGameIds.ToHashSet()
             : null;
-        var excludeIgdbIds = options.OverwriteExisting ? null : existingIgdbIds;
+        var excludeIgdbIds = (options.OverwriteExisting || includeIgdbIds is not null)
+            ? null
+            : existingIgdbIds;
 
         var igdbGames = await _igdb.GetPcGamesAsync(
             excludeIgdbIds: excludeIgdbIds,
@@ -115,9 +117,11 @@ public class GameImportService
             Genres     = g.Genres,
             RawgId     = g.Id,
             Offers     = BuildOffers(g),
+            CoverUrl   = g.CoverUrl,
             Rating     = g.Rating,
             RatingCount = g.RatingCount,
-            IsDlc = g.IsDlc
+            IsDlc = g.IsDlc,
+            ContentType = g.GameType
         }).Where(g => !string.IsNullOrEmpty(g.NormalizedTitle)).ToList();
 
         // Filter out games with no store offers
@@ -332,7 +336,33 @@ public class GameImportService
                 {
                     if (!options.OverwriteExisting)
                     {
-                        _logger.LogDebug("Skipping existing game '{Title}' - OverwriteExisting is false", import.Title);
+                        var needsTypeRefresh = false;
+
+                        if (existing.IsDlc != import.IsDlc)
+                        {
+                            existing.IsDlc = import.IsDlc;
+                            needsTypeRefresh = true;
+                        }
+
+                        if (!string.Equals(existing.ContentType, import.ContentType, StringComparison.Ordinal))
+                        {
+                            existing.ContentType = import.ContentType;
+                            needsTypeRefresh = true;
+                        }
+
+                        if (needsTypeRefresh)
+                        {
+                            existing.UpdatedAt = DateTime.UtcNow;
+                            gamesToUpdate.Add(existing);
+                            _logger.LogInformation(
+                                "Refreshed content type for existing game '{Title}' (GameId={GameId}) to '{ContentType}'",
+                                import.Title, existing.GameId, existing.ContentType ?? "main_game");
+                        }
+                        else
+                        {
+                            _logger.LogDebug("Skipping existing game '{Title}' - OverwriteExisting is false", import.Title);
+                        }
+
                         continue;
                     }
 
@@ -375,6 +405,18 @@ public class GameImportService
                         needsUpdate = true;
                     }
 
+                    if (!string.Equals(existing.ContentType, import.ContentType, StringComparison.Ordinal))
+                    {
+                        existing.ContentType = import.ContentType;
+                        needsUpdate = true;
+                    }
+
+                    if (!string.IsNullOrEmpty(import.CoverUrl) && existing.CoverUrl != import.CoverUrl)
+                    {
+                        existing.CoverUrl = import.CoverUrl;
+                        needsUpdate = true;
+                    }
+
                     if (needsUpdate)
                     { existing.UpdatedAt = DateTime.UtcNow; gamesToUpdate.Add(existing); }
 
@@ -390,13 +432,15 @@ public class GameImportService
                         Description     = import.Description,
                         ReleaseDate     = import.ReleaseDate,
                         RawgId          = import.RawgId,
+                        CoverUrl        = import.CoverUrl,
                         DeveloperId     = await _cache.GetOrCreateDeveloperIdAsync(import.Developer),
                         PublisherId     = await _cache.GetOrCreatePublisherIdAsync(import.Publisher),
                         CreatedAt       = DateTime.UtcNow,
                         UpdatedAt       = DateTime.UtcNow,
                         Rating          = import.Rating,
                         RatingCount     = import.RatingCount,
-                        IsDlc           = import.IsDlc
+                        IsDlc           = import.IsDlc,
+                        ContentType     = import.ContentType
                     };
 
                     newGames.Add(game);

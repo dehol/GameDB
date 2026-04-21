@@ -1,20 +1,39 @@
 using GameDB.Core.DTOs;
+using GameDB.Core.Interfaces;
 using GameDB.Core.Models;
+using GameDB.Core.Constants;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Logging;
+using System.Text.RegularExpressions;
 
 namespace GameDB.Infrastructure.Services;
 
 public class GameService
 {
     private readonly AppDbContext _db;
-    public GameService(AppDbContext db) => _db = db;
+    private readonly IIgdbApiService _igdbApiService;
+    private readonly ILogger<GameService> _logger;
+    private static readonly Regex SteamAppIdFromUrlRegex = new(@"/app/(\d+)", RegexOptions.IgnoreCase | RegexOptions.Compiled);
+    private static readonly Regex DigitsRegex = new(@"^\d+$", RegexOptions.Compiled);
+
+    public GameService(
+        AppDbContext db,
+        IIgdbApiService igdbApiService,
+        ILogger<GameService> logger)
+    {
+        _db = db;
+        _igdbApiService = igdbApiService;
+        _logger = logger;
+    }
 
     public async Task<(List<GameCatalogRow> items, int totalCount)> GetCatalogAsync(
         string? search, int? genreId, int? shopId, string? sortBy, string? contentType, int page, int pageSize)
     {
+        var catalogQuerySql = await BuildCatalogQuerySqlAsync();
+
         // Base query from view - EF Core 7+ allows composing LINQ over raw SQL
         var query = _db.Database
-            .SqlQueryRaw<GameCatalogRow>("SELECT * FROM vw_game_catalog")
+            .SqlQueryRaw<GameCatalogRow>(catalogQuerySql)
             .AsNoTracking();
 
         // Database-side filtering
@@ -38,41 +57,11 @@ public class GameService
             query = query.Where(g => gameIds.Contains(g.GameId));
         }
 
-        query = contentType?.ToLowerInvariant() switch
+        var normalizedContentType = NormalizeContentTypeFilter(contentType);
+        if (!string.IsNullOrEmpty(normalizedContentType) && normalizedContentType != "all")
         {
-            "main_game" or "main-game" or "main" or "game" or "games" => query.Where(g =>
-                !g.is_dlc &&
-                !EF.Functions.ILike(g.Title, "%bundle%") &&
-                !EF.Functions.ILike(g.Title, "%collection%") &&
-                !EF.Functions.ILike(g.Title, "% pack%") &&
-                !EF.Functions.ILike(g.Title, "%pack %") &&
-                !EF.Functions.ILike(g.Title, "% pack") &&
-                !EF.Functions.ILike(g.Title, "pack %") &&
-                !EF.Functions.ILike(g.Title, "pack") &&
-                !EF.Functions.ILike(g.Title, "% dlc%") &&
-                !EF.Functions.ILike(g.Title, "%map pack%") &&
-                !EF.Functions.ILike(g.Title, "%season pass%") &&
-                !EF.Functions.ILike(g.Title, "%soundtrack%") &&
-                !EF.Functions.ILike(g.Title, "% add-on%") &&
-                !EF.Functions.ILike(g.Title, "% addon%")),
-            "bundle" or "bundles" => query.Where(g =>
-                EF.Functions.ILike(g.Title, "%bundle%") ||
-                EF.Functions.ILike(g.Title, "%collection%")),
-            "dlc" or "dlcs" => query.Where(g =>
-                g.is_dlc ||
-                EF.Functions.ILike(g.Title, "% dlc%") ||
-                EF.Functions.ILike(g.Title, "% pack%") ||
-                EF.Functions.ILike(g.Title, "%pack %") ||
-                EF.Functions.ILike(g.Title, "% pack") ||
-                EF.Functions.ILike(g.Title, "pack %") ||
-                EF.Functions.ILike(g.Title, "pack") ||
-                EF.Functions.ILike(g.Title, "%map pack%") ||
-                EF.Functions.ILike(g.Title, "%season pass%") ||
-                EF.Functions.ILike(g.Title, "%soundtrack%") ||
-                EF.Functions.ILike(g.Title, "% add-on%") ||
-                EF.Functions.ILike(g.Title, "% addon%")),
-            _ => query
-        };
+            query = query.Where(g => (g.content_type ?? "main_game") == normalizedContentType);
+        }
 
         // Count before pagination
         var totalCount = await query.CountAsync();
@@ -98,6 +87,68 @@ public class GameService
             .ToListAsync();
 
         return (items, totalCount);
+    }
+
+    private async Task<string> BuildCatalogQuerySqlAsync()
+    {
+        var hasCatalogContentType = await HasColumnAsync("vw_game_catalog", "content_type");
+        if (hasCatalogContentType)
+            return "SELECT * FROM vw_game_catalog";
+
+        _logger.LogWarning("vw_game_catalog.content_type is missing. Using compatibility projection.");
+
+        var hasGameContentType = await HasColumnAsync("Game", "ContentType");
+        if (hasGameContentType)
+        {
+            return """
+                SELECT
+                    v.*,
+                    COALESCE(g."ContentType",
+                        CASE WHEN COALESCE(v.is_dlc, false) THEN 'dlc_addon' ELSE 'main_game' END
+                    ) AS content_type
+                FROM vw_game_catalog v
+                LEFT JOIN "Game" g ON g."GameId" = v."GameId"
+                """;
+        }
+
+        return """
+            SELECT
+                v.*,
+                CASE WHEN COALESCE(v.is_dlc, false) THEN 'dlc_addon' ELSE 'main_game' END AS content_type
+            FROM vw_game_catalog v
+            """;
+    }
+
+    private async Task<bool> HasColumnAsync(string tableName, string columnName)
+    {
+        return await _db.Database
+            .SqlQueryRaw<int>(
+                """
+                SELECT 1
+                FROM information_schema.columns
+                WHERE table_schema = 'public'
+                  AND table_name = {0}
+                  AND column_name = {1}
+                LIMIT 1
+                """,
+                tableName,
+                columnName)
+            .AnyAsync();
+    }
+
+    private static string? NormalizeContentTypeFilter(string? contentType)
+    {
+        if (string.IsNullOrWhiteSpace(contentType))
+            return null;
+
+        return contentType.Trim().ToLowerInvariant() switch
+        {
+            "all" => "all",
+            "main-game" or "main" or "game" or "games" => "main_game",
+            "dlc" or "dlcs" => "dlc_addon",
+            "bundles" => "bundle",
+            _ => contentType.Trim().ToLowerInvariant()
+        };
     }
 
     public async Task<GameDetailsDto?> GetByIdAsync(int gameId)
@@ -160,24 +211,132 @@ public class GameService
         };
     }
 
-    public async Task<Dictionary<int, string>> GetSteamCoverIdsAsync(IEnumerable<int> gameIds)
+    /// <summary>
+    /// Resolve cover sources for a set of games.
+    /// Priority: 1) cached Game.CoverUrl (from IGDB import), 2) Steam CDN fallback
+    /// Returns dictionary of gameId → cover source string.
+    /// Cover source formats: "steam:{appId}" or full URL (https://...)
+    /// </summary>
+    public async Task<Dictionary<int, string>> GetCoverSourcesAsync(IEnumerable<int> gameIds)
     {
         var ids = gameIds.Distinct().ToList();
         if (ids.Count == 0) return new Dictionary<int, string>();
 
-        return await _db.GameOffers
+        var result = new Dictionary<int, string>();
+
+        // Step 1: Return cached CoverUrl from Game table (populated during IGDB import)
+        var games = await _db.Games
             .AsNoTracking()
-            .Where(o => ids.Contains(o.GameId)
-                        && o.ShopId == 1
-                        && o.ExternalId != null
-                        && o.ExternalId != "")
-            .GroupBy(o => o.GameId)
-            .Select(g => new
+            .Where(g => ids.Contains(g.GameId))
+            .Select(g => new { g.GameId, g.CoverUrl, g.RawgId })
+            .ToListAsync();
+
+        foreach (var game in games)
+        {
+            // Skip stale full Steam CDN URLs from previous code version
+            if (!string.IsNullOrWhiteSpace(game.CoverUrl) && !game.CoverUrl.StartsWith("https://cdn.cloudflare.steamstatic.com/") && !game.CoverUrl.StartsWith("https://shared.cloudflare.steamstatic.com/"))
             {
-                GameId = g.Key,
-                SteamAppId = g.Select(o => o.ExternalId!).First()
-            })
-            .ToDictionaryAsync(x => x.GameId, x => x.SteamAppId);
+                result[game.GameId] = game.CoverUrl;
+            }
+        }
+
+        var unresolvedIds = ids.Where(id => !result.ContainsKey(id)).ToHashSet();
+        if (unresolvedIds.Count == 0) return result;
+
+        // Step 2: Steam CDN fallback — for Steam games without an IGDB cover
+        var steamOffers = await _db.GameOffers
+            .AsNoTracking()
+            .Where(o => unresolvedIds.Contains(o.GameId) && o.ShopId == ShopConstants.Steam)
+            .Select(o => new { o.GameId, o.ExternalId, o.DownloadUrl })
+            .ToListAsync();
+
+        var resolvedBySteam = new Dictionary<int, string>();
+        foreach (var offer in steamOffers)
+        {
+            if (result.ContainsKey(offer.GameId)) continue;
+
+            var steamAppId = TryExtractSteamAppId(offer.ExternalId) ?? TryExtractSteamAppId(offer.DownloadUrl);
+            if (!string.IsNullOrWhiteSpace(steamAppId))
+            {
+                // "steam:{appId}" — frontend generates multiple CDN fallback URLs
+                var coverSource = $"steam:{steamAppId}";
+                resolvedBySteam[offer.GameId] = coverSource;
+                result[offer.GameId] = coverSource;
+            }
+        }
+
+        // Cache Steam fallback to Game.CoverUrl so we skip this next time
+        if (resolvedBySteam.Count > 0)
+        {
+            await SaveCoverUrlsAsync(resolvedBySteam);
+        }
+
+        unresolvedIds = ids.Where(id => !result.ContainsKey(id)).ToHashSet();
+        if (unresolvedIds.Count == 0) return result;
+
+        // Step 3: IGDB cover lookup by RawgId (which stores the IGDB game ID)
+        // For games imported before cover.url was added to the IGDB query
+        var unresolvedWithIgdbId = games
+            .Where(g => unresolvedIds.Contains(g.GameId) && g.RawgId != null)
+            .ToList();
+
+        if (unresolvedWithIgdbId.Count > 0)
+        {
+            var igdbIds = unresolvedWithIgdbId.Select(g => g.RawgId!.Value).ToList();
+            var igdbCovers = await _igdbApiService.GetCoversByIdsAsync(igdbIds);
+
+            var resolvedByIgdb = new Dictionary<int, string>();
+            foreach (var game in unresolvedWithIgdbId)
+            {
+                if (igdbCovers.TryGetValue(game.RawgId!.Value, out var coverUrl))
+                {
+                    resolvedByIgdb[game.GameId] = coverUrl;
+                    result[game.GameId] = coverUrl;
+                }
+            }
+
+            if (resolvedByIgdb.Count > 0)
+            {
+                await SaveCoverUrlsAsync(resolvedByIgdb);
+            }
+        }
+
+        return result;
+    }
+
+    private async Task SaveCoverUrlsAsync(Dictionary<int, string> coverUrls)
+    {
+        if (coverUrls.Count == 0) return;
+
+        var gameIds = coverUrls.Keys.ToList();
+        var gamesToUpdate = await _db.Games
+            .Where(g => gameIds.Contains(g.GameId) && g.CoverUrl == null)
+            .ToListAsync();
+
+        foreach (var game in gamesToUpdate)
+        {
+            if (coverUrls.TryGetValue(game.GameId, out var url))
+            {
+                game.CoverUrl = url;
+            }
+        }
+
+        if (gamesToUpdate.Count > 0)
+        {
+            await _db.SaveChangesAsync();
+            _logger.LogDebug("Cached {Count} cover URLs", gamesToUpdate.Count);
+        }
+    }
+
+    private static string? TryExtractSteamAppId(string? value)
+    {
+        if (string.IsNullOrWhiteSpace(value)) return null;
+
+        var fromUrl = SteamAppIdFromUrlRegex.Match(value);
+        if (fromUrl.Success) return fromUrl.Groups[1].Value;
+
+        var trimmed = value.Trim();
+        return DigitsRegex.IsMatch(trimmed) ? trimmed : null;
     }
 
     /// <summary>

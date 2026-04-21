@@ -11,6 +11,12 @@ public interface IIgdbApiService
         ISet<int>? includeIgdbIds = null,
         int? maxGames = null,
         CancellationToken ct = default);
+
+    /// <summary>
+    /// Fetches cover URLs for specific IGDB game IDs.
+    /// Returns dictionary of igdbId → cover URL.
+    /// </summary>
+    Task<Dictionary<int, string>> GetCoversByIdsAsync(IEnumerable<int> igdbIds, CancellationToken ct = default);
 }
 
 public record IgdbGame
@@ -27,9 +33,13 @@ public record IgdbGame
     public string? SteamUrl { get; init; }    // category 13
     public string? GogUrl { get; init; }      // category 17
     public string? EgsUrl { get; init; }      // category 16
+
+    // Cover art from IGDB (proper cover, not screenshot)
+    public string? CoverUrl { get; init; }
     
     // Rating (0-100 scale from IGDB)
     public double? Rating { get; init; }
     public int? RatingCount { get; init; }
     public bool IsDlc { get; init; }
+    public string? GameType { get; init; }
 }
