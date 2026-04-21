@@ -16,6 +16,7 @@ function HeartIcon({ filled }) {
 
 export default function GameCard({ game, inWishlist, onWishlist, onClick }) {
   const [hov, setHov] = useState(false);
+  const [wishHov, setWishHov] = useState(false);
   const genres = game.genres ? game.genres.split(', ') : [];
   const hue = coverHue(game.title);
   const hasDiscount = game.max_discount > 0;
@@ -133,18 +134,15 @@ export default function GameCard({ game, inWishlist, onWishlist, onClick }) {
       <button
         aria-label={inWishlist ? 'Remove from wishlist' : 'Add to wishlist'}
         onClick={e => { e.stopPropagation(); onWishlist?.(); }}
+        onMouseEnter={() => setWishHov(true)}
+        onMouseLeave={() => setWishHov(false)}
         style={{
-          background: inWishlist ? 'var(--red-dim)' : 'transparent',
-          border: `1px solid ${inWishlist ? 'rgba(245,34,45,0.3)' : 'var(--border)'}`,
+          background: inWishlist || wishHov ? 'var(--red-dim)' : 'transparent',
+          border: `1px solid ${inWishlist || wishHov ? 'rgba(245,34,45,0.4)' : 'var(--border)'}`,
           cursor: 'pointer', padding: 7, borderRadius: 'var(--radius)', flexShrink: 0,
-          color: inWishlist ? 'var(--red)' : 'var(--text-muted)',
+          color: inWishlist || wishHov ? 'var(--red)' : 'var(--text-muted)',
           display: 'flex', alignItems: 'center', justifyContent: 'center',
           transition: 'all var(--transition-fast)',
-        }}
-        onMouseEnter={e => { e.currentTarget.style.color = 'var(--red)'; e.currentTarget.style.borderColor = 'rgba(245,34,45,0.4)'; }}
-        onMouseLeave={e => {
-          e.currentTarget.style.color = inWishlist ? 'var(--red)' : 'var(--text-muted)';
-          e.currentTarget.style.borderColor = inWishlist ? 'rgba(245,34,45,0.3)' : 'var(--border)';
         }}
       >
         <HeartIcon filled={inWishlist} />

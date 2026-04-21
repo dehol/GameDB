@@ -1,3 +1,5 @@
+import { useState } from 'react';
+
 /* ─── FilterPanel ─────────────────────────────────────────────────── */
 const GENRES = [
   { value: 1, label: 'RPG' },
@@ -60,22 +62,25 @@ function FilterLabel({ children }) {
 }
 
 function FSelect({ value, onChange, options, placeholder }) {
+  const [focused, setFocused] = useState(false);
   return (
     <select
       value={value ?? ''}
       onChange={e => onChange(e.target.value || null)}
+      onFocus={() => setFocused(true)}
+      onBlur={() => setFocused(false)}
       style={{
         width: '100%', padding: '7px 10px',
-        background: 'var(--bg-input)', border: '1px solid var(--border)',
+        background: 'var(--bg-input)',
+        border: `1px solid ${focused ? 'var(--primary)' : 'var(--border)'}`,
+        boxShadow: focused ? '0 0 0 2px rgba(79,156,249,0.15)' : 'none',
         color: value ? 'var(--text-primary)' : 'var(--text-muted)',
         borderRadius: 'var(--radius)', fontSize: 12, cursor: 'pointer',
         outline: 'none', appearance: 'none',
         backgroundImage: `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6' viewBox='0 0 10 6'%3E%3Cpath d='M0 0l5 6 5-6z' fill='%235a5a78'/%3E%3C/svg%3E")`,
         backgroundRepeat: 'no-repeat', backgroundPosition: 'right 8px center',
-        paddingRight: 24, transition: 'border-color var(--transition-fast)',
+        paddingRight: 24, transition: 'border-color var(--transition-fast), box-shadow var(--transition-fast)',
       }}
-      onFocus={e => { e.target.style.borderColor = 'var(--primary)'; e.target.style.boxShadow = '0 0 0 2px rgba(79,156,249,0.15)'; }}
-      onBlur={e => { e.target.style.borderColor = 'var(--border)'; e.target.style.boxShadow = 'none'; }}
     >
       {placeholder && <option value="" style={{ color: 'var(--text-muted)' }}>{placeholder}</option>}
       {options.map(o => <option key={o.value} value={o.value} style={{ color: 'var(--text-primary)', background: 'var(--bg-elevated)' }}>{o.label}</option>)}
@@ -87,7 +92,7 @@ function PresetPicker({ presets, value, onChange, accentVar = '--green' }) {
   return (
     <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap' }}>
       {presets.map(p => {
-        const active = value === p.value;
+        const active = String(value) === String(p.value);
         return (
           <button key={String(p.value)} onClick={() => onChange(active ? (typeof p.value === 'number' ? 0 : '') : p.value)} style={{
             padding: '3px 8px', borderRadius: 20,
