@@ -172,6 +172,24 @@ public class AppDbContext : DbContext
         mb.Entity<StagingGame>()
             .HasIndex(s => new { s.IgdbId, s.SteamAppId, s.GogId, s.EgsId });
 
+        // WishlistImport indexes and relations
+        mb.Entity<WishlistImport>()
+            .HasIndex(wi => wi.UserId);
+        mb.Entity<WishlistImport>()
+            .HasIndex(wi => wi.ShopId);
+        mb.Entity<WishlistImport>()
+            .HasIndex(wi => wi.Status);
+        mb.Entity<WishlistImport>()
+            .HasOne(wi => wi.User)
+            .WithMany()
+            .HasForeignKey(wi => wi.UserId)
+            .OnDelete(DeleteBehavior.Cascade);
+        mb.Entity<WishlistImport>()
+            .HasOne(wi => wi.Shop)
+            .WithMany()
+            .HasForeignKey(wi => wi.ShopId)
+            .OnDelete(DeleteBehavior.Restrict);
+
         // Seed data
         mb.Entity<Role>().HasData(
             new Role { RoleId = 1, RoleName = "guest" },
