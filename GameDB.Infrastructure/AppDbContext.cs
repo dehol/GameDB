@@ -28,6 +28,7 @@ public class AppDbContext : DbContext
     public DbSet<ImportJob> ImportJobs => Set<ImportJob>();
     public DbSet<RawGameData> RawGameData => Set<RawGameData>();
     public DbSet<StagingGame> StagingGames => Set<StagingGame>();
+    public DbSet<WishlistImport> WishlistImports => Set<WishlistImport>();
 
     protected override void OnModelCreating(ModelBuilder mb)
     {
@@ -51,6 +52,7 @@ public class AppDbContext : DbContext
         mb.Entity<ImportJob>().ToTable("ImportJob");
         mb.Entity<RawGameData>().ToTable("RawGameData");
         mb.Entity<StagingGame>().ToTable("StagingGame");
+        mb.Entity<WishlistImport>().ToTable("WishlistImport");
 
         // Composite PKs
         mb.Entity<GameGenre>().HasKey(gg => new { gg.GameId, gg.GenreId });
@@ -117,6 +119,21 @@ public class AppDbContext : DbContext
             .WithMany(u => u.Notifications)
             .HasForeignKey(n => n.UserId)
             .OnDelete(DeleteBehavior.Cascade);
+
+        // WishlistImport FK configuration
+        mb.Entity<WishlistImport>()
+            .HasOne(wi => wi.User)
+            .WithMany()
+            .HasForeignKey(wi => wi.UserId)
+            .OnDelete(DeleteBehavior.Cascade);
+        mb.Entity<WishlistImport>()
+            .HasOne(wi => wi.Shop)
+            .WithMany()
+            .HasForeignKey(wi => wi.ShopId)
+            .OnDelete(DeleteBehavior.Restrict);
+        mb.Entity<WishlistImport>()
+            .HasIndex(wi => new { wi.UserId, wi.StartedAt })
+            .HasDatabaseName("IX_WishlistImport_UserId_StartedAt");
 
         // CHECK constraints — GameOffer
         mb.Entity<GameOffer>()

@@ -39,6 +39,7 @@ builder.Services.AddScoped<NotificationService>();
 builder.Services.AddScoped<LibraryService>();
 builder.Services.AddScoped<GameImportService>();
 builder.Services.AddScoped<ReferenceDataCache>();
+builder.Services.AddScoped<IWishlistImportService, WishlistImportService>();
 
 // IGDB API Client
 builder.Services.AddHttpClient<IgdbApiService>(client =>
@@ -56,6 +57,8 @@ builder.Services.AddSingleton<Channel<ImportPipelineWorkItem>>(sp =>
     }));
 builder.Services.AddSingleton<IPipelineService, ImportPipelineService>();
 builder.Services.AddHostedService<GameImportWorker>();
+builder.Services.AddSingleton<WishlistImportBackgroundService>();
+builder.Services.AddHostedService(sp => sp.GetRequiredService<WishlistImportBackgroundService>());
 
 // JWT Auth
 var jwtKey = builder.Configuration["Jwt:Key"]!;
