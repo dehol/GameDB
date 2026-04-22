@@ -240,7 +240,7 @@ public class WishlistService
 
             foreach (var url in urls)
             {
-                // profile can be reassigned inside the loop (after token refresh); skip if no longer valid
+                // Guard against profile becoming null/invalid after a token refresh in a previous iteration
                 if (profile == null || string.IsNullOrWhiteSpace(profile.AccessToken))
                     break;
 
