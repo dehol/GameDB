@@ -22,6 +22,8 @@ builder.Services.Configure<IgdbSettings>(
     builder.Configuration.GetSection("Igdb"));
 builder.Services.Configure<ImportSettings>(
     builder.Configuration.GetSection("Import"));
+builder.Services.Configure<ShopApiSettings>(
+    builder.Configuration.GetSection("ShopApis"));
 
 builder.Services.AddSingleton(sp =>
     sp.GetRequiredService<Microsoft.Extensions.Options.IOptions<IgdbSettings>>().Value);
