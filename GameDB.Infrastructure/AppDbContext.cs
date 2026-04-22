@@ -120,6 +120,21 @@ public class AppDbContext : DbContext
             .HasForeignKey(n => n.UserId)
             .OnDelete(DeleteBehavior.Cascade);
 
+        // WishlistImport FK configuration
+        mb.Entity<WishlistImport>()
+            .HasOne(wi => wi.User)
+            .WithMany()
+            .HasForeignKey(wi => wi.UserId)
+            .OnDelete(DeleteBehavior.Cascade);
+        mb.Entity<WishlistImport>()
+            .HasOne(wi => wi.Shop)
+            .WithMany()
+            .HasForeignKey(wi => wi.ShopId)
+            .OnDelete(DeleteBehavior.Restrict);
+        mb.Entity<WishlistImport>()
+            .HasIndex(wi => new { wi.UserId, wi.StartedAt })
+            .HasDatabaseName("IX_WishlistImport_UserId_StartedAt");
+
         // CHECK constraints — GameOffer
         mb.Entity<GameOffer>()
             .ToTable(t => t.HasCheckConstraint("chk_price", "\"CurrentPrice\" >= 0"));
