@@ -28,6 +28,7 @@ public class AppDbContext : DbContext
     public DbSet<ImportJob> ImportJobs => Set<ImportJob>();
     public DbSet<RawGameData> RawGameData => Set<RawGameData>();
     public DbSet<StagingGame> StagingGames => Set<StagingGame>();
+    public DbSet<WishlistImport> WishlistImports => Set<WishlistImport>();
 
     protected override void OnModelCreating(ModelBuilder mb)
     {
@@ -51,6 +52,7 @@ public class AppDbContext : DbContext
         mb.Entity<ImportJob>().ToTable("ImportJob");
         mb.Entity<RawGameData>().ToTable("RawGameData");
         mb.Entity<StagingGame>().ToTable("StagingGame");
+        mb.Entity<WishlistImport>().ToTable("WishlistImport");
 
         // Composite PKs
         mb.Entity<GameGenre>().HasKey(gg => new { gg.GameId, gg.GenreId });
@@ -154,6 +156,24 @@ public class AppDbContext : DbContext
             .HasIndex(s => s.IsProcessed);
         mb.Entity<StagingGame>()
             .HasIndex(s => new { s.IgdbId, s.SteamAppId, s.GogId, s.EgsId });
+
+        // WishlistImport indexes and relations
+        mb.Entity<WishlistImport>()
+            .HasIndex(wi => wi.UserId);
+        mb.Entity<WishlistImport>()
+            .HasIndex(wi => wi.ShopId);
+        mb.Entity<WishlistImport>()
+            .HasIndex(wi => wi.Status);
+        mb.Entity<WishlistImport>()
+            .HasOne(wi => wi.User)
+            .WithMany()
+            .HasForeignKey(wi => wi.UserId)
+            .OnDelete(DeleteBehavior.Cascade);
+        mb.Entity<WishlistImport>()
+            .HasOne(wi => wi.Shop)
+            .WithMany()
+            .HasForeignKey(wi => wi.ShopId)
+            .OnDelete(DeleteBehavior.Restrict);
 
         // Seed data
         mb.Entity<Role>().HasData(
