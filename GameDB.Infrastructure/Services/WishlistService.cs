@@ -228,10 +228,11 @@ public class WishlistService
         {
             var client = _httpFactory.CreateClient();
 
-            // Try GOG wishlist API endpoints
+            // GOG wishlist endpoints in priority order.
+            // www.gog.com/user/wishlist.json returns { "wishlist": { "<productId>": true, ... }, "checksum": "..." }
             var urls = new[]
             {
-                "https://menu.gog.com/user/wishlist.json",
+                "https://www.gog.com/user/wishlist.json",
                 "https://www.gog.com/user/data.json",
             };
 
@@ -239,6 +240,10 @@ public class WishlistService
 
             foreach (var url in urls)
             {
+                // profile can be reassigned inside the loop (after token refresh); skip if no longer valid
+                if (profile == null || string.IsNullOrWhiteSpace(profile.AccessToken))
+                    break;
+
                 try
                 {
                     var request = new HttpRequestMessage(HttpMethod.Get, url);
@@ -246,6 +251,27 @@ public class WishlistService
                     request.Headers.Add("User-Agent", "GameDB/1.0");
 
                     var response = await client.SendAsync(request);
+
+                    // On 401, attempt a token refresh once and retry
+                    if (response.StatusCode == System.Net.HttpStatusCode.Unauthorized)
+                    {
+                        _logger.LogWarning("GOG wishlist API returned 401 from {Url}, attempting token refresh", url);
+                        var (refreshed, _) = await _oauth.RefreshTokenAsync(userId, 2);
+                        if (refreshed)
+                        {
+                            // Re-read the updated token from DB
+                            profile = await _db.UserShopProfiles
+                                .FirstOrDefaultAsync(p => p.UserId == userId && p.ShopId == 2);
+                            if (profile?.AccessToken != null)
+                            {
+                                var retryRequest = new HttpRequestMessage(HttpMethod.Get, url);
+                                retryRequest.Headers.Authorization = new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", profile.AccessToken);
+                                retryRequest.Headers.Add("User-Agent", "GameDB/1.0");
+                                response = await client.SendAsync(retryRequest);
+                            }
+                        }
+                    }
+
                     if (!response.IsSuccessStatusCode)
                     {
                         _logger.LogWarning("GOG wishlist API returned {StatusCode} from {Url}", (int)response.StatusCode, url);
@@ -255,6 +281,8 @@ public class WishlistService
                     var content = await response.Content.ReadAsStringAsync();
                     using var doc = JsonDocument.Parse(content);
 
+                    var parsed = new List<string>();
+
                     // GOG wishlist format: array of objects with "id" or object with numeric keys
                     if (doc.RootElement.ValueKind == JsonValueKind.Array)
                     {
@@ -263,12 +291,12 @@ public class WishlistService
                             var id = item.TryGetProperty("id", out var idProp) ? idProp.ToString() :
                                      item.TryGetProperty("productId", out var pidProp) ? pidProp.ToString() : null;
                             if (id != null)
-                                productIds.Add(id);
+                                parsed.Add(id);
                         }
                     }
                     else if (doc.RootElement.ValueKind == JsonValueKind.Object)
                     {
-                        // Check for wishlist property
+                        // Check for wishlist property (format: { "wishlist": { "123": true }, "checksum": "..." })
                         if (doc.RootElement.TryGetProperty("wishlist", out var wishlist))
                         {
                             if (wishlist.ValueKind == JsonValueKind.Array)
@@ -278,13 +306,13 @@ public class WishlistService
                                     var id = item.TryGetProperty("id", out var idProp) ? idProp.ToString() :
                                              item.TryGetProperty("productId", out var pidProp) ? pidProp.ToString() : null;
                                     if (id != null)
-                                        productIds.Add(id);
+                                        parsed.Add(id);
                                 }
                             }
                             else if (wishlist.ValueKind == JsonValueKind.Object)
                             {
-                                // Object with numeric keys
-                                productIds = wishlist.EnumerateObject()
+                                // Object with numeric product ID keys mapping to boolean values
+                                parsed = wishlist.EnumerateObject()
                                     .Select(p => p.Name)
                                     .Where(name => long.TryParse(name, out _))
                                     .ToList();
@@ -292,16 +320,22 @@ public class WishlistService
                         }
                         else
                         {
-                            // Object with numeric keys (direct format)
-                            productIds = doc.RootElement.EnumerateObject()
+                            // Object with numeric keys at root level (direct format)
+                            parsed = doc.RootElement.EnumerateObject()
                                 .Select(p => p.Name)
                                 .Where(name => long.TryParse(name, out _))
                                 .ToList();
                         }
                     }
 
-                    if (productIds.Count > 0)
+                    // Only accept result from this URL if we got IDs; otherwise try next URL
+                    if (parsed.Count > 0)
+                    {
+                        productIds = parsed;
                         break;
+                    }
+
+                    _logger.LogWarning("GOG wishlist from {Url} returned 0 parseable product IDs, trying next URL", url);
                 }
                 catch (Exception ex)
                 {
@@ -343,13 +377,13 @@ public class WishlistService
         {
             var client = _httpFactory.CreateClient();
 
-            // Epic Games Store uses GraphQL API
+            // Epic Games Store GraphQL API — wishlist items expose offerId directly
             var graphqlQuery = new
             {
-                query = @"query getWishlist { Wishlist { items { offer { id product { id } title } } } }"
+                query = @"query getWishlist { Wishlist { wishlistItems { offerId } } }"
             };
 
-            var request = new HttpRequestMessage(HttpMethod.Post, "https://store.epicgames.com/graphql");
+            var request = new HttpRequestMessage(HttpMethod.Post, "https://graphql.epicgames.com/graphql");
             request.Headers.Authorization = new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", profile.AccessToken);
             request.Headers.Add("User-Agent", "GameDB/1.0");
             request.Content = new StringContent(JsonSerializer.Serialize(graphqlQuery), System.Text.Encoding.UTF8, "application/json");
@@ -368,18 +402,16 @@ public class WishlistService
 
             var epicIds = new List<string>();
 
-            // Parse GraphQL response
+            // Parse GraphQL response: data.Wishlist.wishlistItems[].offerId
             if (doc.RootElement.TryGetProperty("data", out var data) &&
                 data.TryGetProperty("Wishlist", out var wishlist) &&
-                wishlist.TryGetProperty("items", out var items))
+                wishlist.TryGetProperty("wishlistItems", out var items))
             {
                 foreach (var item in items.EnumerateArray())
                 {
-                    if (item.TryGetProperty("offer", out var offer))
+                    if (item.TryGetProperty("offerId", out var offerIdProp))
                     {
-                        var id = offer.TryGetProperty("id", out var idProp) ? idProp.GetString() :
-                                 offer.TryGetProperty("product", out var product) &&
-                                 product.TryGetProperty("id", out var pidProp) ? pidProp.GetString() : null;
+                        var id = offerIdProp.GetString();
                         if (id != null)
                             epicIds.Add(id);
                     }

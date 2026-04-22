@@ -103,6 +103,13 @@ public class AppDbContext : DbContext
             .OnDelete(DeleteBehavior.Cascade);
 
         // WishlistSource relationships
+        // Wishlist → WishlistSource (one-to-many, cascade delete so removing a wishlist entry cleans up its sources)
+        mb.Entity<Wishlist>()
+            .HasMany(w => w.Sources)
+            .WithOne()
+            .HasForeignKey(ws => new { ws.UserId, ws.GameId })
+            .OnDelete(DeleteBehavior.Cascade);
+
         mb.Entity<WishlistSource>()
             .HasOne(ws => ws.User)
             .WithMany()
