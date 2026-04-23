@@ -23,6 +23,13 @@ async function request(path, options = {}) {
 
   const contentType = res.headers.get('content-type') || '';
   if (!res.ok) {
+    if (contentType.includes('application/json')) {
+      const data = await res.json();
+      const err = new Error(data?.error || res.statusText);
+      err.responseData = data;
+      err.status = res.status;
+      throw err;
+    }
     const text = await res.text();
     throw new Error(text || res.statusText);
   }

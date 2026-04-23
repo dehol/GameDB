@@ -54,9 +54,11 @@ export default function WishlistPage() {
       message.success(`Imported ${res.imported} games from ${SHOP_META[shop]?.label || shop}`);
       fetch();
     } catch (e) {
-      // Check if error is 403 (not linked)
-      if (e.message?.includes('not linked') || e.message?.includes('403')) {
-        // Try to get authorize URL
+      // 403 response includes { error, authorizeUrl } — use it directly to open the link modal
+      if (e.status === 403 && e.responseData?.authorizeUrl) {
+        setLinkModal({ shop, authorizeUrl: e.responseData.authorizeUrl });
+      } else if (e.status === 403) {
+        // Fallback: fetch authorize URL separately if body didn't include it
         try {
           const authRes = await api.getOAuthAuthorizeUrl(shop);
           setLinkModal({ shop, authorizeUrl: authRes.url });

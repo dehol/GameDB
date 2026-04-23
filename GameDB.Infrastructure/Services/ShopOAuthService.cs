@@ -147,6 +147,7 @@ public class ShopOAuthService
 
     /// <summary>
     /// Handles Epic Games Store OAuth callback — exchanges authorization code for tokens.
+    /// EGS requires client credentials as a Basic Authorization header, not in the request body.
     /// </summary>
     public async Task<(bool success, string? error)> HandleEgsCallbackAsync(int userId, string code)
     {
@@ -155,9 +156,10 @@ public class ShopOAuthService
 
         var tokenRequest = new HttpRequestMessage(HttpMethod.Post, config.TokenUrl);
         var redirectUri = BuildRedirectUri(3);
+        // EGS requires Basic auth (base64 clientId:clientSecret) instead of body credentials
+        var credentials = Convert.ToBase64String(Encoding.UTF8.GetBytes($"{config.ClientId}:{config.ClientSecret}"));
+        tokenRequest.Headers.Authorization = new System.Net.Http.Headers.AuthenticationHeaderValue("Basic", credentials);
         var body = $"grant_type=authorization_code&code={Uri.EscapeDataString(code)}" +
-                   $"&client_id={Uri.EscapeDataString(config.ClientId)}" +
-                   $"&client_secret={Uri.EscapeDataString(config.ClientSecret)}" +
                    $"&redirect_uri={Uri.EscapeDataString(redirectUri)}";
         tokenRequest.Content = new StringContent(body, Encoding.UTF8, "application/x-www-form-urlencoded");
 
@@ -427,11 +429,12 @@ public class ShopOAuthService
         var config = _settings.Egs;
         var client = _httpFactory.CreateClient();
 
-        var body = $"grant_type=refresh_token&refresh_token={Uri.EscapeDataString(profile.RefreshToken!)}" +
-                   $"&client_id={Uri.EscapeDataString(config.ClientId)}" +
-                   $"&client_secret={Uri.EscapeDataString(config.ClientSecret)}";
+        // EGS requires client credentials as Basic auth header, not in the body
+        var credentials = Convert.ToBase64String(Encoding.UTF8.GetBytes($"{config.ClientId}:{config.ClientSecret}"));
+        var body = $"grant_type=refresh_token&refresh_token={Uri.EscapeDataString(profile.RefreshToken!)}";
 
         var request = new HttpRequestMessage(HttpMethod.Post, config.TokenUrl);
+        request.Headers.Authorization = new System.Net.Http.Headers.AuthenticationHeaderValue("Basic", credentials);
         request.Content = new StringContent(body, Encoding.UTF8, "application/x-www-form-urlencoded");
 
         var response = await client.SendAsync(request);
