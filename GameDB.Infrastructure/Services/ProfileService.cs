@@ -1,12 +1,21 @@
 using GameDB.Core.Models;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Logging;
 
 namespace GameDB.Infrastructure.Services;
 
 public class ProfileService
 {
     private readonly AppDbContext _db;
-    public ProfileService(AppDbContext db) => _db = db;
+    private readonly ShopOAuthService _oauth;
+    private readonly ILogger<ProfileService> _logger;
+
+    public ProfileService(AppDbContext db, ShopOAuthService oauth, ILogger<ProfileService> logger)
+    {
+        _db = db;
+        _oauth = oauth;
+        _logger = logger;
+    }
 
     public async Task<User?> GetProfileAsync(int userId)
     {
@@ -16,6 +25,10 @@ public class ProfileService
             .FirstOrDefaultAsync(u => u.UserId == userId);
     }
 
+    /// <summary>
+    /// Links a shop account by external ID.
+    /// Validates the ID format via ShopOAuthService.LinkByExternalIdAsync.
+    /// </summary>
     public async Task<(bool success, string? error)> UpsertShopProfileAsync(int userId, int shopId, string externalUid)
     {
         var user = await _db.Users
@@ -31,28 +44,16 @@ public class ProfileService
         if (string.IsNullOrWhiteSpace(externalUid))
             return (false, "External UID is required");
 
-        if (!await _db.GameShops.AnyAsync(s => s.ShopId == shopId))
-            return (false, "Shop not found");
+        // Delegate validation + upsert to ShopOAuthService
+        return await _oauth.LinkByExternalIdAsync(userId, shopId, externalUid);
+    }
 
-        var existing = await _db.UserShopProfiles
-            .FirstOrDefaultAsync(p => p.UserId == userId && p.ShopId == shopId);
-
-        if (existing != null)
-        {
-            existing.ExternalUid = externalUid;
-            existing.LinkedAt = DateTime.UtcNow;
-        }
-        else
-        {
-            _db.UserShopProfiles.Add(new UserShopProfile
-            {
-                UserId = userId,
-                ShopId = shopId,
-                ExternalUid = externalUid
-            });
-        }
-
-        await _db.SaveChangesAsync();
-        return (true, null);
+    /// <summary>
+    /// Unlinks a shop account from user profile.
+    /// </summary>
+    public async Task<(bool success, string? error)> UnlinkShopProfileAsync(int userId, int shopId)
+    {
+        var removed = await _oauth.UnlinkAsync(userId, shopId);
+        return (removed, removed ? null : "Shop account not linked");
     }
 }

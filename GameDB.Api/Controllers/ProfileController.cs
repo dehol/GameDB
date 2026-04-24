@@ -41,11 +41,26 @@ public class ProfileController : ControllerBase
         });
     }
 
+    /// <summary>
+    /// Links a shop account by external ID.
+    /// Steam: Steam64 ID, GOG: username, EGS: display name.
+    /// </summary>
     [HttpPut("shop-profile")]
     public async Task<IActionResult> UpsertShopProfile(UpsertShopProfileDto dto)
     {
         var (success, error) = await _profile.UpsertShopProfileAsync(GetUserId(), dto.ShopId, dto.ExternalUid);
-        if (!success) return BadRequest(error);
-        return Ok(new { message = "Shop profile updated" });
+        if (!success) return BadRequest(new { error });
+        return Ok(new { message = "Shop profile linked" });
+    }
+
+    /// <summary>
+    /// Unlinks a shop account.
+    /// </summary>
+    [HttpDelete("shop-profile/{shopId}")]
+    public async Task<IActionResult> UnlinkShopProfile(int shopId)
+    {
+        var (success, error) = await _profile.UnlinkShopProfileAsync(GetUserId(), shopId);
+        if (!success) return BadRequest(new { error });
+        return Ok(new { message = "Shop profile unlinked" });
     }
 }

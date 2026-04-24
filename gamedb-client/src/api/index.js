@@ -85,6 +85,10 @@ export const api = {
   // OAuth
   getOAuthAuthorizeUrl: (shop) => request(`/oauth/${shop}/authorize`),
   getOAuthStatus: (shop) => request(`/oauth/${shop}/status`),
+  linkShopByExternalId: (shop, externalId) => request(`/oauth/${shop}/link`, {
+    method: 'POST',
+    body: JSON.stringify({ externalId }),
+  }),
   unlinkShop: (shop) => request(`/oauth/${shop}/unlink`, { method: 'DELETE' }),
 
   // Profile
@@ -105,6 +109,7 @@ export const api = {
   // Library
   getLibrary: () => request('/library'),
   addToLibrary: (data) => request('/library', { method: 'POST', body: JSON.stringify(data) }),
+  importLibrary: (shop) => request(`/library/import/${shop}`, { method: 'POST' }),
 
   // Admin: unified import pipeline
   startImportPipeline: (options = {}) => request('/import/start', { method: 'POST', body: JSON.stringify(options) }),

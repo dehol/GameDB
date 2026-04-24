@@ -7,7 +7,9 @@ using System.Security.Claims;
 namespace GameDB.Api.Controllers;
 
 /// <summary>
-/// Handles OAuth authentication flows for shop accounts (Steam, GOG, Epic Games Store).
+/// Handles shop account linking.
+/// Steam: supports OpenID login for automatic Steam64 ID retrieval.
+/// GOG/EGS: direct external ID input (username/display name) — no OAuth needed.
 /// </summary>
 [ApiController]
 [Route("api/[controller]")]
@@ -25,79 +27,55 @@ public class OAuthController : ControllerBase
     private int GetUserId() => int.Parse(User.FindFirstValue(ClaimTypes.NameIdentifier)!);
 
     /// <summary>
-    /// Initiates OAuth flow for the specified shop.
-    /// Returns the authorization URL that the frontend should redirect the user to.
+    /// Initiates Steam OpenID login. Returns the authorization URL.
     /// </summary>
-    [HttpGet("{shop}/authorize")]
+    [HttpGet("steam/authorize")]
     [Authorize]
-    public IActionResult Authorize(string shop)
+    public IActionResult SteamAuthorize()
+    {
+        var (url, state) = _oauth.GetSteamAuthUrl(GetUserId());
+        return Ok(new { url, state });
+    }
+
+    /// <summary>
+    /// Handles Steam OpenID callback.
+    /// </summary>
+    [HttpGet("steam/callback")]
+    [AllowAnonymous]
+    public async Task<IActionResult> SteamCallback(
+        [FromQuery(Name = "state")] string? state,
+        [FromQuery(Name = "openid.claimed_id")] string? claimedId)
+    {
+        var frontendUrl = _oauthSettings.FrontendBaseUrl;
+
+        if (string.IsNullOrWhiteSpace(claimedId) || string.IsNullOrWhiteSpace(state))
+            return Redirect($"{frontendUrl}/wishlist?linked=error&message=Steam+authentication+failed");
+
+        var (success, error) = await _oauth.HandleSteamCallbackAsync(state, claimedId);
+
+        if (success)
+            return Redirect($"{frontendUrl}/wishlist?linked=steam");
+
+        return Redirect($"{frontendUrl}/wishlist?linked=error&message={Uri.EscapeDataString(error ?? "Unknown error")}");
+    }
+
+    /// <summary>
+    /// Links a shop account by external ID directly.
+    /// Steam: Steam64 ID (numeric). GOG: username. EGS: display name.
+    /// </summary>
+    [HttpPost("{shop}/link")]
+    [Authorize]
+    public async Task<IActionResult> LinkByExternalId(string shop, [FromBody] LinkAccountDto dto)
     {
         var shopId = ShopOAuthService.ShopSlugToId(shop);
         if (shopId == null)
             return BadRequest(new { error = $"Unknown shop: {shop}. Supported: steam, gog, egs" });
 
-        var (url, state) = _oauth.GetAuthorizationUrl(GetUserId(), shopId.Value);
-        return Ok(new { url, state });
-    }
+        var (success, error) = await _oauth.LinkByExternalIdAsync(GetUserId(), shopId.Value, dto.ExternalId);
+        if (!success)
+            return BadRequest(new { error });
 
-    /// <summary>
-    /// Handles OAuth callback from the shop.
-    /// For Steam: receives OpenID response with claimed_id.
-    /// For GOG/EGS: receives authorization code.
-    /// </summary>
-    [HttpGet("{shop}/callback")]
-    [AllowAnonymous]
-    public async Task<IActionResult> Callback(string shop, [FromQuery] string? state, [FromQuery] string? code,
-        // Steam OpenID params
-        [FromQuery] string? openid_claimed_id,
-        [FromQuery] string? openid_mode,
-        [FromQuery] string? openid_ns)
-    {
-        var shopId = ShopOAuthService.ShopSlugToId(shop);
-        if (shopId == null)
-            return BadRequest(new { error = $"Unknown shop: {shop}" });
-
-        var frontendUrl = _oauthSettings.FrontendBaseUrl;
-
-        try
-        {
-            bool success;
-            string? error;
-
-            if (shopId == 1)
-            {
-                // Steam OpenID callback
-                if (string.IsNullOrWhiteSpace(openid_claimed_id))
-                {
-                    return Redirect($"{frontendUrl}/wishlist?linked=error&message=Steam+authentication+failed");
-                }
-
-                (success, error) = await _oauth.HandleCallbackAsync(state ?? "", openid_claimed_id);
-            }
-            else
-            {
-                // GOG/EGS OAuth callback
-                if (string.IsNullOrWhiteSpace(code) || string.IsNullOrWhiteSpace(state))
-                {
-                    return Redirect($"{frontendUrl}/wishlist?linked=error&message=Authorization+code+missing");
-                }
-
-                (success, error) = await _oauth.HandleCallbackAsync(state, code);
-            }
-
-            if (success)
-            {
-                return Redirect($"{frontendUrl}/wishlist?linked={shop}");
-            }
-            else
-            {
-                return Redirect($"{frontendUrl}/wishlist?linked=error&message={Uri.EscapeDataString(error ?? "Unknown error")}");
-            }
-        }
-        catch (Exception ex)
-        {
-            return Redirect($"{frontendUrl}/wishlist?linked=error&message={Uri.EscapeDataString(ex.Message)}");
-        }
+        return Ok(new { message = $"{shop} account linked successfully", externalId = dto.ExternalId });
     }
 
     /// <summary>
@@ -129,7 +107,7 @@ public class OAuthController : ControllerBase
         if (shopId == null)
             return BadRequest(new { error = $"Unknown shop: {shop}" });
 
-        var linked = await _oauth.HasValidAuthAsync(GetUserId(), shopId.Value);
+        var linked = await _oauth.IsLinkedAsync(GetUserId(), shopId.Value);
         var profile = await _oauth.GetProfileAsync(GetUserId(), shopId.Value);
 
         return Ok(new
@@ -140,4 +118,6 @@ public class OAuthController : ControllerBase
             externalUid = profile?.ExternalUid
         });
     }
+
+    public record LinkAccountDto(string ExternalId);
 }

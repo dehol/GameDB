@@ -1,21 +1,22 @@
 import { useState, useEffect } from 'react';
-import { Table, Button, message, Popconfirm, Dropdown, Tag, Modal, Space } from 'antd';
+import { Table, Button, message, Popconfirm, Dropdown, Tag, Modal, Space, Input } from 'antd';
 import { DeleteOutlined, ImportOutlined, DownOutlined } from '@ant-design/icons';
 import { api } from '../api';
 import { useAuth } from '../context/AuthContext';
 
 const SHOP_META = {
-  steam: { label: 'Steam', color: '#1b2838' },
-  gog: { label: 'GOG', color: '#86328a' },
-  egs: { label: 'Epic Games', color: '#0078f2' },
+  steam: { label: 'Steam', color: '#1b2838', placeholder: 'Steam64 ID', useOAuth: true },
+  gog: { label: 'GOG', color: '#86328a', placeholder: 'GOG username', useOAuth: false },
+  egs: { label: 'Epic Games', color: '#0078f2', placeholder: 'Epic display name', useOAuth: false },
 };
 
 export default function WishlistPage() {
   const { user } = useAuth();
   const [items, setItems] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [importing, setImporting] = useState(null); // shop slug or null
-  const [linkModal, setLinkModal] = useState(null); // { shop, authorizeUrl }
+  const [importing, setImporting] = useState(null);
+  const [linkModal, setLinkModal] = useState(null); // { shop, externalId, mode: 'oauth'|'input' }
+  const [linkingExternal, setLinkingExternal] = useState(false);
 
   const fetch = () => {
     setLoading(true);
@@ -24,7 +25,7 @@ export default function WishlistPage() {
 
   useEffect(fetch, []);
 
-  // Handle ?linked=shop query param after OAuth callback
+  // Handle ?linked=shop query param after OAuth callback (Steam)
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
     const linked = params.get('linked');
@@ -54,22 +55,44 @@ export default function WishlistPage() {
       message.success(`Imported ${res.imported} games from ${SHOP_META[shop]?.label || shop}`);
       fetch();
     } catch (e) {
-      // 403 response includes { error, authorizeUrl } — use it directly to open the link modal
-      if (e.status === 403 && e.responseData?.authorizeUrl) {
-        setLinkModal({ shop, authorizeUrl: e.responseData.authorizeUrl });
-      } else if (e.status === 403) {
-        // Fallback: fetch authorize URL separately if body didn't include it
-        try {
-          const authRes = await api.getOAuthAuthorizeUrl(shop);
-          setLinkModal({ shop, authorizeUrl: authRes.url });
-        } catch {
-          message.error(`Please link your ${SHOP_META[shop]?.label || shop} account first.`);
+      if (e.status === 403) {
+        // Account not linked — show appropriate link modal
+        const meta = SHOP_META[shop];
+        if (meta?.useOAuth) {
+          // Steam — try to get OAuth URL
+          try {
+            const authRes = await api.getOAuthAuthorizeUrl(shop);
+            setLinkModal({ shop, mode: 'oauth', authorizeUrl: authRes.url, externalId: '' });
+          } catch {
+            message.error(`Please link your ${meta.label} account in your Profile first.`);
+          }
+        } else {
+          // GOG/EGS — show input modal
+          setLinkModal({ shop, mode: 'input', externalId: '' });
         }
       } else {
         message.error(e.message);
       }
     }
     setImporting(null);
+  };
+
+  const handleLinkByExternalId = async () => {
+    if (!linkModal?.externalId?.trim()) {
+      message.error('Please enter your ID');
+      return;
+    }
+    setLinkingExternal(true);
+    try {
+      await api.linkShopByExternalId(linkModal.shop, linkModal.externalId.trim());
+      message.success(`${SHOP_META[linkModal.shop]?.label} account linked!`);
+      setLinkModal(null);
+      // Retry import after linking
+      handleImport(linkModal.shop);
+    } catch (e) {
+      message.error(e.message);
+    }
+    setLinkingExternal(false);
   };
 
   const shopMenuItems = Object.entries(SHOP_META).map(([slug, meta]) => ({
@@ -125,19 +148,50 @@ export default function WishlistPage() {
         open={!!linkModal}
         title={`Link ${SHOP_META[linkModal?.shop]?.label || ''} Account`}
         onCancel={() => setLinkModal(null)}
-        footer={null}
-      >
-        <p>To import your wishlist, you need to link your {SHOP_META[linkModal?.shop]?.label} account first.</p>
-        <Button
-          type="primary"
-          onClick={() => {
-            if (linkModal?.authorizeUrl) {
-              window.location.href = linkModal.authorizeUrl;
+        {...(linkModal?.mode === 'input'
+          ? {
+              onOk: handleLinkByExternalId,
+              okText: 'Link & Import',
+              confirmLoading: linkingExternal,
             }
-          }}
-        >
-          Link {SHOP_META[linkModal?.shop]?.label} Account
-        </Button>
+          : { footer: null }
+        )}
+      >
+        {linkModal?.mode === 'oauth' ? (
+          <>
+            <p>To import your wishlist, you need to link your {SHOP_META[linkModal?.shop]?.label} account first.</p>
+            <Button
+              type="primary"
+              onClick={() => {
+                if (linkModal?.authorizeUrl) {
+                  window.location.href = linkModal.authorizeUrl;
+                }
+              }}
+            >
+              Link {SHOP_META[linkModal?.shop]?.label} Account
+            </Button>
+          </>
+        ) : (
+          <>
+            <p style={{ marginBottom: 12 }}>
+              Enter your {SHOP_META[linkModal?.shop]?.label}{' '}
+              {linkModal?.shop === 'gog' ? 'username' : 'display name'} to link and import your wishlist.
+            </p>
+            <Input
+              placeholder={SHOP_META[linkModal?.shop]?.placeholder}
+              value={linkModal?.externalId || ''}
+              onChange={e => setLinkModal(prev => ({ ...prev, externalId: e.target.value }))}
+              onPressEnter={handleLinkByExternalId}
+              size="large"
+              autoFocus
+            />
+            {linkModal?.shop === 'gog' && (
+              <p style={{ marginTop: 8, color: '#888', fontSize: 12 }}>
+                Make sure your GOG wishlist is public for import to work.
+              </p>
+            )}
+          </>
+        )}
       </Modal>
     </div>
   );

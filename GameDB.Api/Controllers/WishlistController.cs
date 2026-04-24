@@ -53,7 +53,7 @@ public class WishlistController : ControllerBase
 
     /// <summary>
     /// Import wishlist from a specific shop.
-    /// Requires the user to have linked their shop account via OAuth first.
+    /// Requires the user to have linked their shop account first.
     /// </summary>
     [HttpPost("import/{shop}")]
     [Authorize(Roles = "user,admin")]
@@ -65,14 +65,11 @@ public class WishlistController : ControllerBase
 
         var userId = GetUserId();
 
-        // Check if user has linked the shop account
-        if (!await _oauth.HasValidAuthAsync(userId, shopId.Value))
+        if (!await _oauth.IsLinkedAsync(userId, shopId.Value))
         {
-            var (authUrl, _) = _oauth.GetAuthorizationUrl(userId, shopId.Value);
             return StatusCode(403, new
             {
-                error = $"{shop} account not linked. Please link your account first.",
-                authorizeUrl = authUrl
+                error = $"{shop} account not linked. Please link your account first via POST /api/oauth/{shop}/link"
             });
         }
 
