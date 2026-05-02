@@ -199,6 +199,7 @@ public class GameService
                 CurrentPrice = o.CurrentPrice,
                 CurrentDiscount = o.CurrentDiscount,
                 Currency = o.Currency,
+                IsFree = o.IsFree,
                 PriceSyncedAt = o.PriceSyncedAt,
                 PriceHistory = o.PriceHistories.Select(ph => new PriceHistoryDto
                 {
@@ -228,7 +229,7 @@ public class GameService
         var games = await _db.Games
             .AsNoTracking()
             .Where(g => ids.Contains(g.GameId))
-            .Select(g => new { g.GameId, g.CoverUrl, g.RawgId })
+            .Select(g => new { g.GameId, g.CoverUrl, g.IgdbId })
             .ToListAsync();
 
         foreach (var game in games)
@@ -274,21 +275,21 @@ public class GameService
         unresolvedIds = ids.Where(id => !result.ContainsKey(id)).ToHashSet();
         if (unresolvedIds.Count == 0) return result;
 
-        // Step 3: IGDB cover lookup by RawgId (which stores the IGDB game ID)
+        // Step 3: IGDB cover lookup by IgdbId
         // For games imported before cover.url was added to the IGDB query
         var unresolvedWithIgdbId = games
-            .Where(g => unresolvedIds.Contains(g.GameId) && g.RawgId != null)
+            .Where(g => unresolvedIds.Contains(g.GameId) && g.IgdbId != null)
             .ToList();
 
         if (unresolvedWithIgdbId.Count > 0)
         {
-            var igdbIds = unresolvedWithIgdbId.Select(g => g.RawgId!.Value).ToList();
+            var igdbIds = unresolvedWithIgdbId.Select(g => g.IgdbId!.Value).ToList();
             var igdbCovers = await _igdbApiService.GetCoversByIdsAsync(igdbIds);
 
             var resolvedByIgdb = new Dictionary<int, string>();
             foreach (var game in unresolvedWithIgdbId)
             {
-                if (igdbCovers.TryGetValue(game.RawgId!.Value, out var coverUrl))
+                if (igdbCovers.TryGetValue(game.IgdbId!.Value, out var coverUrl))
                 {
                     resolvedByIgdb[game.GameId] = coverUrl;
                     result[game.GameId] = coverUrl;

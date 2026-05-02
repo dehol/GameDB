@@ -55,7 +55,7 @@ export default function GamesAdminPage() {
     { title: 'ID', dataIndex: 'gameId', key: 'id', width: 60 },
     { title: 'Title', dataIndex: 'title', key: 'title' },
     { title: 'Developer', dataIndex: 'developer_name', key: 'dev' },
-    { title: 'Min Price', dataIndex: 'min_price', key: 'price', render: v => v != null ? `$${Number(v).toFixed(2)}` : '—' },
+    { title: 'Min Price', dataIndex: 'min_price', key: 'price', render: v => v != null && v > 0 ? `$${Number(v).toFixed(2)}` : v === 0 ? 'Free' : '—' },
     { title: '', key: 'actions', width: 120, render: (_, r) => (
       <span>
         <Button icon={<EditOutlined />} size="small" onClick={() => openEdit(r)} style={{ marginRight: 8 }} />

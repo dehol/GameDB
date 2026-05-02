@@ -11,12 +11,12 @@ namespace GameDB.Api.Controllers;
 public class LibraryController : ControllerBase
 {
     private readonly LibraryService _library;
-    private readonly ShopOAuthService _oauth;
+    private readonly ShopLinkService _shopLink;
 
-    public LibraryController(LibraryService library, ShopOAuthService oauth)
+    public LibraryController(LibraryService library, ShopLinkService shopLink)
     {
         _library = library;
-        _oauth = oauth;
+        _shopLink = shopLink;
     }
 
     private int GetUserId() => int.Parse(User.FindFirstValue(ClaimTypes.NameIdentifier)!);
@@ -46,13 +46,13 @@ public class LibraryController : ControllerBase
     [Authorize(Roles = "user,admin")]
     public async Task<IActionResult> Import(string shop)
     {
-        var shopId = ShopOAuthService.ShopSlugToId(shop);
+        var shopId = ShopLinkService.ShopSlugToId(shop);
         if (shopId == null)
-            return BadRequest(new { error = $"Unknown shop: {shop}. Supported: steam, gog, egs" });
+            return BadRequest(new { error = $"Unknown shop: {shop}. Supported: steam, gog" });
 
         var userId = GetUserId();
 
-        if (!await _oauth.IsLinkedAsync(userId, shopId.Value))
+        if (!await _shopLink.IsLinkedAsync(userId, shopId.Value))
         {
             return StatusCode(403, new
             {

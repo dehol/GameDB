@@ -7,13 +7,13 @@ namespace GameDB.Infrastructure.Services;
 public class ProfileService
 {
     private readonly AppDbContext _db;
-    private readonly ShopOAuthService _oauth;
+    private readonly ShopLinkService _shopLink;
     private readonly ILogger<ProfileService> _logger;
 
-    public ProfileService(AppDbContext db, ShopOAuthService oauth, ILogger<ProfileService> logger)
+    public ProfileService(AppDbContext db, ShopLinkService shopLink, ILogger<ProfileService> logger)
     {
         _db = db;
-        _oauth = oauth;
+        _shopLink = shopLink;
         _logger = logger;
     }
 
@@ -27,7 +27,7 @@ public class ProfileService
 
     /// <summary>
     /// Links a shop account by external ID.
-    /// Validates the ID format via ShopOAuthService.LinkByExternalIdAsync.
+    /// Validates the ID format via ShopLinkService.LinkByExternalIdAsync.
     /// </summary>
     public async Task<(bool success, string? error)> UpsertShopProfileAsync(int userId, int shopId, string externalUid)
     {
@@ -44,8 +44,8 @@ public class ProfileService
         if (string.IsNullOrWhiteSpace(externalUid))
             return (false, "External UID is required");
 
-        // Delegate validation + upsert to ShopOAuthService
-        return await _oauth.LinkByExternalIdAsync(userId, shopId, externalUid);
+        // Delegate validation + upsert to ShopLinkService
+        return await _shopLink.LinkByExternalIdAsync(userId, shopId, externalUid);
     }
 
     /// <summary>
@@ -53,7 +53,7 @@ public class ProfileService
     /// </summary>
     public async Task<(bool success, string? error)> UnlinkShopProfileAsync(int userId, int shopId)
     {
-        var removed = await _oauth.UnlinkAsync(userId, shopId);
+        var removed = await _shopLink.UnlinkAsync(userId, shopId);
         return (removed, removed ? null : "Shop account not linked");
     }
 }

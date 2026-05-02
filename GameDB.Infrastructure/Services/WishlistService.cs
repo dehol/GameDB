@@ -10,14 +10,14 @@ public class WishlistService
 {
     private readonly AppDbContext _db;
     private readonly IHttpClientFactory _httpFactory;
-    private readonly ShopOAuthService _oauth;
+    private readonly ShopLinkService _shopLink;
     private readonly ILogger<WishlistService> _logger;
 
-    public WishlistService(AppDbContext db, IHttpClientFactory httpFactory, ShopOAuthService oauth, ILogger<WishlistService> logger)
+    public WishlistService(AppDbContext db, IHttpClientFactory httpFactory, ShopLinkService shopLink, ILogger<WishlistService> logger)
     {
         _db = db;
         _httpFactory = httpFactory;
-        _oauth = oauth;
+        _shopLink = shopLink;
         _logger = logger;
     }
 
@@ -100,9 +100,9 @@ public class WishlistService
     /// </summary>
     public async Task<(int imported, string? error)> ImportAsync(int userId, int shopId)
     {
-        var profile = await _oauth.GetProfileAsync(userId, shopId);
+        var profile = await _shopLink.GetProfileAsync(userId, shopId);
         if (profile == null || string.IsNullOrWhiteSpace(profile.ExternalUid))
-            return (0, $"{ShopOAuthService.ShopIdToSlug(shopId)?.ToUpper()} account not linked. Please link your account first.");
+            return (0, $"{ShopLinkService.ShopIdToSlug(shopId)?.ToUpper()} account not linked. Please link your account first.");
 
         var externalId = profile.ExternalUid.Trim();
         if (shopId == 1 && externalId.Contains('/'))
@@ -112,14 +112,13 @@ public class WishlistService
         {
             1 => await ImportSteamAsync(userId, externalId),
             2 => await ImportGogAsync(userId, externalId),
-            3 => await ImportItchAsync(userId, externalId),
             _ => (0, $"Unknown shop ID: {shopId}")
         };
     }
 
     /// <summary>
     /// Import wishlist from Steam using user's Steam64 ID.
-    /// Uses official Steam IWishlistService API — no API key or OAuth token needed.
+
     /// </summary>
     public async Task<(int imported, string? error)> ImportSteamAsync(int userId, string steamId)
     {
@@ -281,107 +280,6 @@ public class WishlistService
         {
             _logger.LogError(ex, "GOG wishlist import failed for user {UserId}", userId);
             return (0, $"GOG import failed: {ex.Message}");
-        }
-    }
-
-    /// <summary>
-    /// Import from itch.io using the user's personal API key.
-    /// itch.io does not have a public wishlist API, but owned games can be fetched
-    /// via: GET https://itch.io/api/1/{api_key}/my-owned-keys
-    /// The user generates their API key at https://itch.io/user/settings/api-keys.
-    /// ExternalUid for itch.io stores the API key directly.
-    /// </summary>
-    public async Task<(int imported, string? error)> ImportItchAsync(int userId, string itchApiKey)
-    {
-        try
-        {
-            var client = _httpFactory.CreateClient();
-            var allGameIds = new List<string>();
-            int page = 1;
-
-            // itch.io paginates — 500 keys per page max, iterate until empty
-            while (true)
-            {
-                var url = $"https://itch.io/api/1/{Uri.EscapeDataString(itchApiKey)}/my-owned-keys?page={page}";
-
-                var request = new HttpRequestMessage(HttpMethod.Get, url);
-                request.Headers.Add("User-Agent", "GameDB/1.0");
-
-                var response = await client.SendAsync(request);
-
-                if (response.StatusCode == System.Net.HttpStatusCode.Forbidden ||
-                    response.StatusCode == System.Net.HttpStatusCode.Unauthorized)
-                    return (0, "Invalid itch.io API key. Generate one at itch.io → Settings → API keys.");
-
-                if (!response.IsSuccessStatusCode)
-                {
-                    _logger.LogWarning("itch.io API returned {StatusCode} on page {Page}", (int)response.StatusCode, page);
-                    return (0, "Could not access your itch.io library. Please try again later.");
-                }
-
-                var content = await response.Content.ReadAsStringAsync();
-
-                if (string.IsNullOrWhiteSpace(content))
-                    break;
-
-                using var doc = JsonDocument.Parse(content);
-
-                // Response shape: { "owned_keys": [ { "game": { "id": 123, ... } }, ... ] }
-                if (!doc.RootElement.TryGetProperty("owned_keys", out var keys) ||
-                    keys.ValueKind != JsonValueKind.Array)
-                    break;
-
-                var pageIds = new List<string>();
-                foreach (var key in keys.EnumerateArray())
-                {
-                    if (key.TryGetProperty("game", out var game) &&
-                        game.TryGetProperty("id", out var idProp))
-                    {
-                        var id = idProp.ValueKind == JsonValueKind.Number
-                            ? idProp.GetInt64().ToString()
-                            : idProp.GetString();
-                        if (!string.IsNullOrEmpty(id))
-                            pageIds.Add(id);
-                    }
-                }
-
-                if (pageIds.Count == 0)
-                    break;
-
-                allGameIds.AddRange(pageIds);
-                page++;
-
-                // Safety cap — itch.io docs say max 500/page, stop after 20 pages (10k games)
-                if (page > 20)
-                    break;
-            }
-
-            _logger.LogInformation("itch.io library: found {Count} game IDs for user {UserId}",
-                allGameIds.Count, userId);
-
-            if (allGameIds.Count == 0)
-                return (0, "Your itch.io library is empty or could not be read.");
-
-            var matchedGameIds = await _db.GameOffers
-                .Where(o => o.ShopId == 3 && o.ExternalId != null && allGameIds.Contains(o.ExternalId))
-                .Select(o => o.GameId)
-                .Distinct()
-                .ToListAsync();
-
-            _logger.LogInformation("Matched {Count} games from itch.io library to catalog (out of {Total} game IDs)",
-                matchedGameIds.Count, allGameIds.Count);
-
-            return await AddImportedGamesAsync(userId, 3, matchedGameIds);
-        }
-        catch (JsonException ex)
-        {
-            _logger.LogWarning(ex, "itch.io JSON parse error for user {UserId}", userId);
-            return (0, "itch.io returned an unexpected format. Please try again later.");
-        }
-        catch (Exception ex)
-        {
-            _logger.LogError(ex, "itch.io import failed for user {UserId}", userId);
-            return (0, $"itch.io import failed: {ex.Message}");
         }
     }
 

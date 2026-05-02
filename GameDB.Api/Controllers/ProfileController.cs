@@ -43,7 +43,7 @@ public class ProfileController : ControllerBase
 
     /// <summary>
     /// Links a shop account by external ID.
-    /// Steam: Steam64 ID, GOG: username, EGS: display name.
+    /// Steam: Steam64 ID, GOG: username.
     /// </summary>
     [HttpPut("shop-profile")]
     public async Task<IActionResult> UpsertShopProfile(UpsertShopProfileDto dto)

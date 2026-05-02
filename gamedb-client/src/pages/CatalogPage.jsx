@@ -103,7 +103,7 @@ function getCoverUrls(coverSource) {
   }
   // Pure digits — treat as Steam AppId for backward compat
   if (/^\d+$/.test(src)) return getSteamCoverUrls(src);
-  // Full URL (IGDB cover, RAWG image, etc.) — use directly
+  // Full URL (IGDB cover, etc.) — use directly
   if (/^https?:\/\//i.test(src)) return [src];
   // URL-like but no scheme — try as-is
   return [src];
@@ -317,7 +317,7 @@ function GameRow({ game, inWishlist, onWishlist, onClick }) {
           fontFamily: 'var(--font-mono)', fontWeight: 600, fontSize: 15,
           color: hasDiscount ? 'var(--green)' : 'var(--text-primary)',
         }}>
-          {game.min_price != null ? `$${Number(game.min_price).toFixed(2)}` : 'N/A'}
+          {game.min_price != null && game.min_price > 0 ? `$${Number(game.min_price).toFixed(2)}` : game.min_price === 0 ? 'Free' : 'N/A'}
         </span>
       </div>
 

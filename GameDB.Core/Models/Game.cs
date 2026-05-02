@@ -13,12 +13,12 @@ public class Game
     public int? PublisherId { get; set; }
     
     /// <summary>
-    /// RAWG API game ID for deduplication
+    /// IGDB game ID for deduplication
     /// </summary>
-    public int? RawgId { get; set; }
+    public int? IgdbId { get; set; }
 
     /// <summary>
-    /// Cached cover image URL (resolved from Steam CDN, RAWG, etc.)
+    /// Cached cover image URL (resolved from IGDB, Steam CDN, etc.)
     /// </summary>
     public string? CoverUrl { get; set; }
 

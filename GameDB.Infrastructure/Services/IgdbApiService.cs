@@ -12,7 +12,7 @@ namespace GameDB.Infrastructure.Services;
 /// - Auth via Twitch client_credentials (token auto-refreshed)
 /// - Batch queries: 500 games per request with full metadata
 /// - PC platform (id=6), includes base games and DLC/expansions
-/// - Filters games that have at least one of: Steam, GOG, EGS store URL
+/// - Filters games that have at least one of: Steam, GOG store URL
 /// </summary>
 public class IgdbApiService : IIgdbApiService
 {
@@ -27,7 +27,6 @@ public class IgdbApiService : IIgdbApiService
     // IGDB website categories
     private const int SteamCategory = 13;
     private const int GogCategory   = 17;
-    private const int EgsCategory   = 16;
 
     // IGDB PC platform ID
     private const int PcPlatformId = 6;
@@ -130,7 +129,7 @@ public class IgdbApiService : IIgdbApiService
 
                 var game = MapGame(raw);
                 // Only include games available on at least one store
-                if (game.SteamUrl != null || game.GogUrl != null || game.EgsUrl != null)
+                if (game.SteamUrl != null || game.GogUrl != null)
                 {
                     result.Add(game);
                     if (maxGames.HasValue && result.Count >= maxGames.Value)
@@ -295,8 +294,6 @@ public class IgdbApiService : IIgdbApiService
             .FirstOrDefault(w => w.Category == SteamCategory || IsSteamUrl(w.Url))?.Url;
         var gogUrl   = raw.Websites?
             .FirstOrDefault(w => w.Category == GogCategory || IsGogUrl(w.Url))?.Url;
-        var egsUrl   = raw.Websites?
-            .FirstOrDefault(w => w.Category == EgsCategory || IsEgsUrl(w.Url))?.Url;
 
         // IGDB returns relative URLs like "//images.igdb.com/..." — make absolute
         var coverUrl = raw.Cover?.Url;
@@ -316,7 +313,6 @@ public class IgdbApiService : IIgdbApiService
             Publisher         = publisher,
             SteamUrl          = steamUrl,
             GogUrl            = gogUrl,
-            EgsUrl            = egsUrl,
             CoverUrl          = coverUrl,
             Rating            = raw.Rating,
             RatingCount       = raw.RatingCount,
@@ -371,10 +367,6 @@ public class IgdbApiService : IIgdbApiService
 
     private static bool IsGogUrl(string? url) =>
         HasExpectedHost(url, "gog.com");
-
-    private static bool IsEgsUrl(string? url) =>
-        HasExpectedHost(url, "epicgames.com") ||
-        HasExpectedHost(url, "epic.games");
 
     private static bool HasExpectedHost(string? url, string expectedHost)
     {

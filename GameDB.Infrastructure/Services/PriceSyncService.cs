@@ -1,6 +1,11 @@
+using EFCore.BulkExtensions;
+using GameDB.Core.Configuration;
+using GameDB.Core.Constants;
 using GameDB.Core.DTOs;
 using GameDB.Core.Models;
+using GameDB.Infrastructure.Caching;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using System.Text.Json;
 
@@ -8,191 +13,407 @@ namespace GameDB.Infrastructure.Services;
 
 public class PriceSyncService
 {
-    private readonly AppDbContext _db;
-    private readonly IHttpClientFactory _httpFactory;
+    private readonly IServiceProvider _serviceProvider;
+    private readonly IItadClient _itad;
+    private readonly ItadUuidCache _uuidCache;
     private readonly ILogger<PriceSyncService> _logger;
-    private const int BatchSize = 20; // Steam batch size
+    private readonly ImportSettings _settings;
+    private readonly SemaphoreSlim _syncLock = new(1, 1);
 
-    public PriceSyncService(AppDbContext db, IHttpClientFactory httpFactory, ILogger<PriceSyncService> logger)
+    private const int ItadShopGog = 35;
+
+    public PriceSyncService(
+        IServiceProvider serviceProvider,
+        IItadClient itad,
+        ItadUuidCache uuidCache,
+        ILogger<PriceSyncService> logger,
+        ImportSettings settings)
     {
-        _db = db;
-        _httpFactory = httpFactory;
+        _serviceProvider = serviceProvider;
+        _itad = itad;
+        _uuidCache = uuidCache;
         _logger = logger;
+        _settings = settings;
     }
 
-    public async Task<SyncResult> SyncSteamPricesAsync()
+    public Task<SyncResult> SyncSteamPricesAsync(CancellationToken ct = default)
+        => SyncSteamAsync(ct);
+
+    public Task<SyncResult> SyncGogPricesAsync(CancellationToken ct = default)
+        => SyncGogAsync(ct);
+
+    public async Task<SyncResult> SyncAllAsync(CancellationToken ct = default)
     {
-        var offers = await _db.GameOffers
-            .Where(o => o.ShopId == 1 && o.ExternalId != null)
-            .ToListAsync();
-
-        int updated = 0;
-        var errors = new List<SyncError>();
-        var client = _httpFactory.CreateClient();
-
-        // Batch processing instead of per-offer calls
-        foreach (var batch in offers.Chunk(BatchSize))
+        if (!_syncLock.Wait(0))
         {
+            _logger.LogWarning("Price sync already in progress — skipping");
+            return new SyncResult(0, 0, 0, [new SyncError(0, null, "Sync already in progress", null)]);
+        }
+
+        try
+        {
+            var steamTask = SyncSteamAsync(ct);
+            var gogTask   = SyncGogAsync(ct);
+
+            await Task.WhenAll(steamTask, gogTask);
+
+            var steamResult = await steamTask;
+            var gogResult   = await gogTask;
+
+            var allErrors = new List<SyncError>();
+            if (steamResult.ErrorDetails != null) allErrors.AddRange(steamResult.ErrorDetails);
+            if (gogResult.ErrorDetails != null) allErrors.AddRange(gogResult.ErrorDetails);
+
+            return new SyncResult(
+                steamResult.Scanned + gogResult.Scanned,
+                steamResult.Updated + gogResult.Updated,
+                steamResult.Errors + gogResult.Errors,
+                allErrors
+            );
+        }
+        finally
+        {
+            _syncLock.Release();
+        }
+    }
+
+    // ── Steam: direct Steam Store API (ITAD has very limited Steam coverage) ──
+
+    private async Task<SyncResult> SyncSteamAsync(CancellationToken ct)
+    {
+        _logger.LogInformation("Starting Steam price sync via Steam API");
+
+        using var scope = _serviceProvider.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+        var http = scope.ServiceProvider.GetRequiredService<IHttpClientFactory>().CreateClient("Steam");
+
+        var cutoff = DateTime.UtcNow - TimeSpan.FromHours(_settings.PriceSyncIntervalHours);
+        var query = db.GameOffers
+            .AsNoTracking()
+            .Where(o => o.ShopId == ShopConstants.Steam && o.ExternalId != null
+                && (o.PriceSyncedAt == null || o.PriceSyncedAt < cutoff));
+
+        if (_settings.PriceSyncMaxOffers > 0)
+            query = query.Take(_settings.PriceSyncMaxOffers);
+
+        var offers = await query.ToListAsync(ct);
+
+        if (offers.Count == 0)
+        {
+            _logger.LogInformation("Steam: no stale offers to sync");
+            return new SyncResult(0, 0, 0, []);
+        }
+
+        _logger.LogInformation("Steam: {Count} stale offers to sync", offers.Count);
+
+        var priceMap = new Dictionary<string, (decimal? price, short? discount, bool isFree)>(StringComparer.OrdinalIgnoreCase);
+        var batchSize = _settings.SteamBatchSize;
+
+        // Batch Steam app IDs with delay to avoid rate limiting
+        var chunks = offers.Select(o => o.ExternalId!).Distinct().Chunk(batchSize).ToList();
+        var consecutiveErrors = 0;
+        for (var i = 0; i < chunks.Count; i++)
+        {
+            var chunk = chunks[i];
             try
             {
-                var appIds = string.Join(",", batch.Select(o => o.ExternalId));
-                var url = $"https://store.steampowered.com/api/appdetails?appids={appIds}&cc=us&filters=price_overview";
-                
-                var response = await client.GetAsync(url);
-                
-                if (!response.IsSuccessStatusCode)
+                var ids = string.Join(",", chunk);
+                var url = $"https://store.steampowered.com/api/appdetails?appids={ids}&cc=us&filters=basic,price_overview";
+                using var resp = await http.GetAsync(url, ct);
+
+                if (resp.StatusCode == System.Net.HttpStatusCode.TooManyRequests
+                    || resp.StatusCode == System.Net.HttpStatusCode.Forbidden
+                    || resp.StatusCode == System.Net.HttpStatusCode.BadRequest)
                 {
-                    _logger.LogWarning("Steam API returned {StatusCode} for batch", (int)response.StatusCode);
-                    errors.AddRange(batch.Select(o => 
-                        new SyncError(o.GameOfferId, o.ExternalId, $"HTTP {(int)response.StatusCode}", (int)response.StatusCode)));
-                    await Task.Delay(200);
-                    continue;
-                }
+                    consecutiveErrors++;
+                    var waitSeconds = Math.Min(30 * consecutiveErrors, 120);
+                    _logger.LogWarning("Steam API {Status} at batch {Batch}/{Total} (x{Count}), waiting {Wait}s",
+                        (int)resp.StatusCode, i + 1, chunks.Count, consecutiveErrors, waitSeconds);
+                    await Task.Delay(TimeSpan.FromSeconds(waitSeconds), ct);
 
-                var content = await response.Content.ReadAsStringAsync();
-                
-                using var doc = JsonDocument.Parse(content); // Fixed: added using
-
-                foreach (var offer in batch)
-                {
-                    try
+                    // Retry once after cooldown
+                    using var retryResp = await http.GetAsync(url, ct);
+                    if (retryResp.IsSuccessStatusCode)
                     {
-                        if (!doc.RootElement.TryGetProperty(offer.ExternalId!, out var appData))
-                        {
-                            errors.Add(new SyncError(offer.GameOfferId, offer.ExternalId, "Missing app data", null));
-                            continue;
-                        }
-
-                        if (!appData.TryGetProperty("success", out var successEl) || !successEl.GetBoolean())
-                        {
-                            errors.Add(new SyncError(offer.GameOfferId, offer.ExternalId, "success=false", null));
-                            continue;
-                        }
-
-                        if (appData.TryGetProperty("data", out var data) &&
-                            data.TryGetProperty("price_overview", out var priceObj))
-                        {
-                            var finalPrice = priceObj.GetProperty("final").GetInt32() / 100m;
-                            var discount = (short)priceObj.GetProperty("discount_percent").GetInt32();
-
-                            if (offer.CurrentPrice != finalPrice || offer.CurrentDiscount != discount)
-                            {
-                                offer.CurrentPrice = finalPrice;
-                                offer.CurrentDiscount = discount;
-                                offer.PriceSyncedAt = DateTime.UtcNow;
-                                updated++;
-                            }
-                        }
-                    }
-                    catch (Exception ex)
-                    {
-                        _logger.LogError(ex, "Error parsing Steam price for {ExternalId}", offer.ExternalId);
-                        errors.Add(new SyncError(offer.GameOfferId, offer.ExternalId, ex.Message, null));
+                        var json = await retryResp.Content.ReadAsStringAsync(ct);
+                        ParseSteamPrices(json, priceMap);
+                        consecutiveErrors = 0;
                     }
                 }
-
-                // Reduced logging overhead: log every 50 updates
-                if (updated > 0 && updated % 50 == 0)
+                else if (resp.IsSuccessStatusCode)
                 {
-                    _logger.LogInformation("Steam sync progress: {Updated} prices updated", updated);
+                    var json = await resp.Content.ReadAsStringAsync(ct);
+                    ParseSteamPrices(json, priceMap);
+                    consecutiveErrors = 0;
                 }
 
-                // Clear ChangeTracker to reduce memory growth
-                _db.ChangeTracker.Clear();
-
-                await Task.Delay(200); // Reduced from 500ms
+                // Delay between batches — shorter when no errors, longer after rate limiting
+                var delay = consecutiveErrors > 0 ? TimeSpan.FromSeconds(5) : TimeSpan.FromSeconds(1);
+                if (i < chunks.Count - 1)
+                    await Task.Delay(delay, ct);
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "Error processing Steam batch");
-                errors.AddRange(batch.Select(o => 
-                    new SyncError(o.GameOfferId, o.ExternalId, ex.Message, null)));
+                _logger.LogWarning(ex, "Steam price batch {Batch} failed", i + 1);
             }
         }
 
-        await _db.SaveChangesAsync();
-        
-        if (updated > 0)
-        {
-            _logger.LogInformation("Steam sync completed: {Updated}/{Total} updated, {Errors} errors", 
-                updated, offers.Count, errors.Count);
-        }
-        
-        return new SyncResult(offers.Count, updated, errors.Count, errors);
-    }
+        _logger.LogInformation("Steam: got prices for {Count} apps", priceMap.Count);
 
-    public async Task<SyncResult> SyncGogPricesAsync()
-    {
-        var offers = await _db.GameOffers
-            .Where(o => o.ShopId == 2 && o.ExternalId != null)
-            .ToListAsync();
-
-        int updated = 0;
+        var offersToUpdate = new List<GameOffer>();
         var errors = new List<SyncError>();
-        var client = _httpFactory.CreateClient();
+        var now = DateTime.UtcNow;
+        int noPriceData = 0, unchanged = 0, markedFree = 0;
 
         foreach (var offer in offers)
         {
-            try
+            var extId = offer.ExternalId!;
+
+            if (!priceMap.TryGetValue(extId, out var p))
             {
-                var url = $"https://api.gog.com/products/{offer.ExternalId}?expand=prices&countryCode=US";
-                var response = await client.GetAsync(url);
-                
-                if (!response.IsSuccessStatusCode)
+                // Not found in Steam response at all — skip
+                noPriceData++;
+                continue;
+            }
+
+            // Free game detected via is_free flag
+            if (p.isFree)
+            {
+                if (!offer.IsFree || offer.CurrentPrice != 0)
                 {
-                    _logger.LogWarning("GOG API returned {StatusCode} for offer {OfferId}", 
-                        (int)response.StatusCode, offer.GameOfferId);
-                    errors.Add(new SyncError(offer.GameOfferId, offer.ExternalId, 
-                        $"HTTP {(int)response.StatusCode}", (int)response.StatusCode));
-                    await Task.Delay(200); // Reduced from 500ms
-                    continue;
+                    offer.IsFree = true;
+                    offer.CurrentPrice = 0;
+                    offer.CurrentDiscount = 0;
+                    offer.PriceSyncedAt = now;
+                    offersToUpdate.Add(offer);
+                    markedFree++;
                 }
-
-                var content = await response.Content.ReadAsStringAsync();
-                
-                using var doc = JsonDocument.Parse(content); // Fixed: added using
-
-                if (doc.RootElement.TryGetProperty("price", out var priceObj))
+                else if (offer.PriceSyncedAt == null)
                 {
-                    var finalAmount = decimal.Parse(priceObj.GetProperty("finalAmount").GetString()!);
-                    var baseAmount = decimal.Parse(priceObj.GetProperty("baseAmount").GetString()!);
-                    var discount = baseAmount > 0
-                        ? (short)Math.Round((1 - finalAmount / baseAmount) * 100)
-                        : (short)0;
-
-                    if (offer.CurrentPrice != finalAmount || offer.CurrentDiscount != discount)
-                    {
-                        offer.CurrentPrice = finalAmount;
-                        offer.CurrentDiscount = discount;
-                        offer.PriceSyncedAt = DateTime.UtcNow;
-                        updated++;
-                    }
+                    offer.PriceSyncedAt = now;
+                    offersToUpdate.Add(offer);
+                    unchanged++;
                 }
-            }
-            catch (Exception ex)
-            {
-                _logger.LogError(ex, "Error syncing GOG price for offer {OfferId}", offer.GameOfferId);
-                errors.Add(new SyncError(offer.GameOfferId, offer.ExternalId, ex.Message, null));
+                continue;
             }
 
-            // Clear ChangeTracker periodically to reduce memory growth
-            if (updated % 50 == 0 && updated > 0)
+            if (p.price == null)
             {
-                _db.ChangeTracker.Clear();
-                _logger.LogInformation("GOG sync progress: {Updated} prices updated", updated);
+                // No price_overview and not free — unreleased, removed, etc.
+                noPriceData++;
+                continue;
             }
 
-            await Task.Delay(200); // Reduced from 500ms
+            if (offer.CurrentPrice == p.price && offer.CurrentDiscount == p.discount)
+            {
+                // Price unchanged — still mark as synced
+                offer.PriceSyncedAt = now;
+                offersToUpdate.Add(offer);
+                unchanged++;
+                continue;
+            }
+
+            offer.CurrentPrice    = p.price.Value;
+            offer.CurrentDiscount = p.discount ?? 0;
+            offer.Currency        = "USD";
+            offer.PriceSyncedAt   = now;
+            offer.IsFree          = false;
+
+            offersToUpdate.Add(offer);
         }
 
-        await _db.SaveChangesAsync();
-        
-        if (updated > 0)
+        _logger.LogInformation(
+            "Steam stats: {NoPrice} no price data, {Unchanged} unchanged, {MarkedFree} free, {Updated} price changed",
+            noPriceData, unchanged, markedFree, offersToUpdate.Count - unchanged - markedFree);
+
+        if (offersToUpdate.Count > 0)
         {
-            _logger.LogInformation("GOG sync completed: {Updated}/{Total} updated, {Errors} errors", 
-                updated, offers.Count, errors.Count);
+            await db.BulkUpdateAsync(offersToUpdate, cancellationToken: ct);
         }
-        
-        return new SyncResult(offers.Count, updated, errors.Count, errors);
+
+        _logger.LogInformation("Steam sync done: {Updated}/{Total} updated, {NoPrice} no price data, {Free} free",
+            offersToUpdate.Count, offers.Count, noPriceData, markedFree);
+        return new SyncResult(offers.Count, offersToUpdate.Count, errors.Count, errors);
     }
+
+    private static void ParseSteamPrices(string json,
+        Dictionary<string, (decimal? price, short? discount, bool isFree)> map)
+    {
+        using var doc = JsonDocument.Parse(json);
+        foreach (var prop in doc.RootElement.EnumerateObject())
+        {
+            var data = prop.Value;
+            if (data.ValueKind != JsonValueKind.Object) continue;
+            if (!data.TryGetProperty("success", out var s) || !s.GetBoolean()) continue;
+            if (!data.TryGetProperty("data", out var gd) || gd.ValueKind != JsonValueKind.Object) continue;
+
+            // Check is_free flag
+            var isFree = gd.TryGetProperty("is_free", out var ifVal) && ifVal.ValueKind == JsonValueKind.True;
+
+            if (!gd.TryGetProperty("price_overview", out var po) || po.ValueKind != JsonValueKind.Object)
+            {
+                // No price_overview — if is_free, record as free; otherwise skip
+                if (isFree)
+                    map[prop.Name] = (0m, (short)0, true);
+                continue;
+            }
+
+            var final   = po.TryGetProperty("final",   out var f) && f.ValueKind == JsonValueKind.Number ? f.GetInt32() : 0;
+            var initial = po.TryGetProperty("initial", out var i) && i.ValueKind == JsonValueKind.Number ? i.GetInt32() : 0;
+
+            map[prop.Name] = (
+                final / 100m,
+                initial > 0 ? (short)Math.Round((1d - (double)final / initial) * 100) : (short)0,
+                isFree
+            );
+        }
+    }
+
+    // ── GOG: via ITAD API (title lookup → prices) ──
+
+    private async Task<SyncResult> SyncGogAsync(CancellationToken ct)
+    {
+        _logger.LogInformation("Starting GOG price sync via ITAD");
+
+        using var scope = _serviceProvider.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+
+        var cutoff = DateTime.UtcNow - TimeSpan.FromHours(_settings.PriceSyncIntervalHours);
+        var query = db.GameOffers
+            .AsNoTracking()
+            .Include(o => o.Game)
+            .Where(o => o.ShopId == ShopConstants.Gog && o.ExternalId != null
+                && (o.PriceSyncedAt == null || o.PriceSyncedAt < cutoff));
+
+        if (_settings.PriceSyncMaxOffers > 0)
+            query = query.Take(_settings.PriceSyncMaxOffers);
+
+        var offers = await query.ToListAsync(ct);
+
+        if (offers.Count == 0)
+        {
+            _logger.LogInformation("GOG: no stale offers to sync");
+            return new SyncResult(0, 0, 0, []);
+        }
+
+        _logger.LogInformation("GOG: {Count} stale offers to sync", offers.Count);
+
+        var errors = new List<SyncError>();
+
+        // 1. Resolve ITAD UUIDs by title (with caching)
+        var titles = offers.ToDictionary(o => o.ExternalId!, o => o.Game?.Title ?? "");
+        var distinctTitles = titles.Values.Distinct().ToList();
+        var uncachedTitles = distinctTitles.Where(t => !_uuidCache.TryGet($"title:{t}", out _)).ToList();
+
+        _logger.LogInformation("GOG: {Total} distinct titles, {Uncached} need lookup",
+            distinctTitles.Count, uncachedTitles.Count);
+
+        if (uncachedTitles.Count > 0)
+        {
+            var freshMap = await _itad.LookupUuidsByTitleAsync(uncachedTitles, ct);
+            _logger.LogInformation("GOG: ITAD title lookup returned {Count} UUIDs", freshMap.Count);
+            foreach (var (title, uuid) in freshMap)
+                _uuidCache.Set($"title:{title}", uuid);
+        }
+
+        // Map: ExternalId -> ITAD UUID
+        var itadIdMap = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+        foreach (var (slug, title) in titles)
+        {
+            if (_uuidCache.TryGet($"title:{title}", out var uuid) && !string.IsNullOrEmpty(uuid))
+                itadIdMap[slug] = uuid;
+        }
+
+        var allItadUuids = itadIdMap.Values.Where(v => !string.IsNullOrEmpty(v)).Distinct().ToList();
+
+        if (allItadUuids.Count == 0)
+        {
+            _logger.LogWarning("GOG: no ITAD UUIDs resolved — skipping price fetch.");
+            return new SyncResult(offers.Count, 0, offers.Count, []);
+        }
+
+        _logger.LogInformation("GOG: {Count} ITAD UUIDs resolved, fetching prices", allItadUuids.Count);
+
+        // 2. Fetch prices
+        var priceMap = await _itad.GetPricesAsync(ItadShopGog, allItadUuids, ct);
+
+        _logger.LogInformation("GOG: ITAD returned prices for {Count} games", priceMap.Count);
+
+        // 3. Update DB
+        var offersToUpdate = new List<GameOffer>();
+        var now = DateTime.UtcNow;
+        int noUuid = 0, noPrice = 0, unchanged = 0, markedFree = 0;
+
+        foreach (var offer in offers)
+        {
+            var extId = offer.ExternalId!;
+
+            if (!itadIdMap.TryGetValue(extId, out var itadUuid) || string.IsNullOrEmpty(itadUuid))
+            {
+                noUuid++;
+                continue;
+            }
+
+            if (!priceMap.TryGetValue(itadUuid, out var price))
+            {
+                noPrice++;
+                continue;
+            }
+
+            // ITAD returns price=0 for free games
+            if (price.Amount == 0)
+            {
+                if (!offer.IsFree)
+                {
+                    offer.IsFree = true;
+                    offer.CurrentPrice = 0;
+                    offer.CurrentDiscount = 0;
+                    offer.PriceSyncedAt = now;
+                    offersToUpdate.Add(offer);
+                    markedFree++;
+                }
+                else if (offer.PriceSyncedAt == null)
+                {
+                    offer.PriceSyncedAt = now;
+                    offersToUpdate.Add(offer);
+                    unchanged++;
+                }
+                continue;
+            }
+
+            if (offer.CurrentPrice == price.Amount && offer.CurrentDiscount == price.Cut)
+            {
+                unchanged++;
+                // Still mark as synced even if price unchanged
+                offer.PriceSyncedAt = now;
+                offersToUpdate.Add(offer);
+                continue;
+            }
+
+            offer.CurrentPrice    = price.Amount;
+            offer.CurrentDiscount = (short)price.Cut;
+            offer.Currency        = price.Currency;
+            offer.PriceSyncedAt   = now;
+            offer.IsFree          = false;
+
+            offersToUpdate.Add(offer);
+        }
+
+        _logger.LogInformation(
+            "GOG stats: {NoUuid} no UUID, {NoPrice} no price, {Unchanged} unchanged, {Free} free, {Updated} price changed",
+            noUuid, noPrice, unchanged, markedFree, offersToUpdate.Count - unchanged - markedFree);
+
+        if (offersToUpdate.Count > 0)
+        {
+            await db.BulkUpdateAsync(offersToUpdate, cancellationToken: ct);
+        }
+
+        _logger.LogInformation("GOG sync done: {Updated}/{Total} updated", offersToUpdate.Count, offers.Count);
+        return new SyncResult(offers.Count, offersToUpdate.Count, errors.Count, errors);
+    }
+}
+
+public class ItadSettings
+{
+    public string ApiKey { get; set; } = string.Empty;
 }

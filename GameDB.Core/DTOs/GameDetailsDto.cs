@@ -44,6 +44,7 @@ public class GameOfferDto
     public decimal CurrentPrice { get; set; }
     public short CurrentDiscount { get; set; }
     public string Currency { get; set; } = "USD";
+    public bool IsFree { get; set; }
     public DateTime? PriceSyncedAt { get; set; }
     public List<PriceHistoryDto> PriceHistory { get; set; } = new();
 }

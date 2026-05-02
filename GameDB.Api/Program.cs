@@ -19,34 +19,46 @@ builder.Services.AddDbContext<AppDbContext>(opt =>
 // Configuration
 builder.Services.Configure<IgdbSettings>(
     builder.Configuration.GetSection("Igdb"));
-builder.Services.Configure<RawgSettings>(
-    builder.Configuration.GetSection("Rawg"));
 builder.Services.Configure<ImportSettings>(
     builder.Configuration.GetSection("Import"));
-builder.Services.Configure<OAuthSettings>(
-    builder.Configuration.GetSection("OAuth"));
+
 
 builder.Services.AddSingleton(sp =>
     sp.GetRequiredService<Microsoft.Extensions.Options.IOptions<IgdbSettings>>().Value);
 builder.Services.AddSingleton(sp =>
-    sp.GetRequiredService<Microsoft.Extensions.Options.IOptions<RawgSettings>>().Value);
-builder.Services.AddSingleton(sp =>
     sp.GetRequiredService<Microsoft.Extensions.Options.IOptions<ImportSettings>>().Value);
-builder.Services.AddSingleton(sp =>
-    sp.GetRequiredService<Microsoft.Extensions.Options.IOptions<OAuthSettings>>().Value);
+
 
 // Services
+builder.Services.AddSingleton<IItadClient, ItadClient>();
+builder.Services.AddScoped<PriceSyncService>();
 builder.Services.AddScoped<AuthService>();
 builder.Services.AddScoped<GameService>();
 builder.Services.AddScoped<WishlistService>();
-builder.Services.AddScoped<PriceSyncService>();
 builder.Services.AddScoped<ProfileService>();
 builder.Services.AddScoped<AlertService>();
 builder.Services.AddScoped<NotificationService>();
 builder.Services.AddScoped<LibraryService>();
 builder.Services.AddScoped<GameImportService>();
-builder.Services.AddScoped<ShopOAuthService>();
+builder.Services.AddScoped<ShopLinkService>();
 builder.Services.AddScoped<ReferenceDataCache>();
+builder.Services.AddSingleton<ItadUuidCache>();
+builder.Services.Configure<ItadSettings>(builder.Configuration.GetSection("ItadSettings"));
+// Read the ItadSettings section from appsettings.json
+var itadSettings = builder.Configuration.GetSection("ItadSettings").Get<ItadSettings>() 
+                   ?? new ItadSettings();
+
+// Register it so the DI container can inject it into PriceSyncService
+builder.Services.AddSingleton(itadSettings);
+
+// Steam Store API client (browser-like headers to avoid 403)
+builder.Services.AddHttpClient("Steam", client =>
+{
+    client.DefaultRequestHeaders.Add("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36");
+    client.DefaultRequestHeaders.Add("Accept", "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8");
+    client.DefaultRequestHeaders.Add("Accept-Language", "en-US,en;q=0.9");
+    client.Timeout = TimeSpan.FromSeconds(30);
+});
 
 // IGDB API Client
 builder.Services.AddHttpClient<IgdbApiService>(client =>
@@ -55,12 +67,6 @@ builder.Services.AddHttpClient<IgdbApiService>(client =>
     client.Timeout = TimeSpan.FromSeconds(30);
 });
 builder.Services.AddScoped<IIgdbApiService>(sp => sp.GetRequiredService<IgdbApiService>());
-builder.Services.AddHttpClient<RawgApiService>(client =>
-{
-    client.DefaultRequestHeaders.Add("User-Agent", "GameDB/1.0");
-    client.Timeout = TimeSpan.FromSeconds(30);
-});
-builder.Services.AddScoped<IRawgApiService>(sp => sp.GetRequiredService<RawgApiService>());
 
 // Pipeline
 builder.Services.AddSingleton<Channel<ImportPipelineWorkItem>>(sp =>
@@ -71,6 +77,7 @@ builder.Services.AddSingleton<Channel<ImportPipelineWorkItem>>(sp =>
 builder.Services.AddSingleton<IPipelineService, ImportPipelineService>();
 builder.Services.AddHostedService<GameImportWorker>();
 builder.Services.AddHostedService<CoverRefreshWorker>();
+builder.Services.AddHostedService<PriceSyncWorker>();
 
 // JWT Auth
 var jwtKey = builder.Configuration["Jwt:Key"]!;

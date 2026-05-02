@@ -5,9 +5,8 @@ import { api } from '../api';
 import { useAuth } from '../context/AuthContext';
 
 const SHOP_META = {
-  steam: { label: 'Steam', color: '#1b2838', placeholder: 'Steam64 ID', useOAuth: true },
-  gog: { label: 'GOG', color: '#86328a', placeholder: 'GOG username', useOAuth: false },
-  egs: { label: 'Epic Games', color: '#0078f2', placeholder: 'Epic display name', useOAuth: false },
+  steam: { label: 'Steam', color: '#1b2838', placeholder: 'Steam64 ID' },
+  gog: { label: 'GOG', color: '#86328a', placeholder: 'GOG username' },
 };
 
 export default function WishlistPage() {
@@ -15,36 +14,21 @@ export default function WishlistPage() {
   const [items, setItems] = useState([]);
   const [loading, setLoading] = useState(true);
   const [importing, setImporting] = useState(null);
-  const [linkModal, setLinkModal] = useState(null); // { shop, externalId, mode: 'oauth'|'input' }
+  const [linkModal, setLinkModal] = useState(null); // { shop, externalId }
   const [linkingExternal, setLinkingExternal] = useState(false);
 
-  const fetch = () => {
+  const fetchWishlist = () => {
     setLoading(true);
     api.getWishlist().then(setItems).catch(e => message.error(e.message)).finally(() => setLoading(false));
   };
 
-  useEffect(fetch, []);
-
-  // Handle ?linked=shop query param after OAuth callback (Steam)
-  useEffect(() => {
-    const params = new URLSearchParams(window.location.search);
-    const linked = params.get('linked');
-    if (linked) {
-      window.history.replaceState({}, '', '/wishlist');
-      if (linked === 'error') {
-        const errMsg = params.get('message') || 'Unknown error';
-        message.error(`Link failed: ${errMsg}`);
-      } else {
-        message.success(`${SHOP_META[linked]?.label || linked} account linked!`);
-      }
-    }
-  }, []);
+  useEffect(fetchWishlist, []);
 
   const remove = async (gameId) => {
     try {
       await api.removeFromWishlist(gameId);
       message.success('Removed');
-      fetch();
+      fetchWishlist();
     } catch (e) { message.error(e.message); }
   };
 
@@ -53,23 +37,11 @@ export default function WishlistPage() {
     try {
       const res = await api.importWishlist(shop);
       message.success(`Imported ${res.imported} games from ${SHOP_META[shop]?.label || shop}`);
-      fetch();
+      fetchWishlist();
     } catch (e) {
       if (e.status === 403) {
-        // Account not linked — show appropriate link modal
-        const meta = SHOP_META[shop];
-        if (meta?.useOAuth) {
-          // Steam — try to get OAuth URL
-          try {
-            const authRes = await api.getOAuthAuthorizeUrl(shop);
-            setLinkModal({ shop, mode: 'oauth', authorizeUrl: authRes.url, externalId: '' });
-          } catch {
-            message.error(`Please link your ${meta.label} account in your Profile first.`);
-          }
-        } else {
-          // GOG/EGS — show input modal
-          setLinkModal({ shop, mode: 'input', externalId: '' });
-        }
+        // Account not linked — show direct input modal
+        setLinkModal({ shop, externalId: '' });
       } else {
         message.error(e.message);
       }
@@ -148,49 +120,26 @@ export default function WishlistPage() {
         open={!!linkModal}
         title={`Link ${SHOP_META[linkModal?.shop]?.label || ''} Account`}
         onCancel={() => setLinkModal(null)}
-        {...(linkModal?.mode === 'input'
-          ? {
-              onOk: handleLinkByExternalId,
-              okText: 'Link & Import',
-              confirmLoading: linkingExternal,
-            }
-          : { footer: null }
-        )}
+        onOk={handleLinkByExternalId}
+        okText="Link & Import"
+        confirmLoading={linkingExternal}
       >
-        {linkModal?.mode === 'oauth' ? (
-          <>
-            <p>To import your wishlist, you need to link your {SHOP_META[linkModal?.shop]?.label} account first.</p>
-            <Button
-              type="primary"
-              onClick={() => {
-                if (linkModal?.authorizeUrl) {
-                  window.location.href = linkModal.authorizeUrl;
-                }
-              }}
-            >
-              Link {SHOP_META[linkModal?.shop]?.label} Account
-            </Button>
-          </>
-        ) : (
-          <>
-            <p style={{ marginBottom: 12 }}>
-              Enter your {SHOP_META[linkModal?.shop]?.label}{' '}
-              {linkModal?.shop === 'gog' ? 'username' : 'display name'} to link and import your wishlist.
-            </p>
-            <Input
-              placeholder={SHOP_META[linkModal?.shop]?.placeholder}
-              value={linkModal?.externalId || ''}
-              onChange={e => setLinkModal(prev => ({ ...prev, externalId: e.target.value }))}
-              onPressEnter={handleLinkByExternalId}
-              size="large"
-              autoFocus
-            />
-            {linkModal?.shop === 'gog' && (
-              <p style={{ marginTop: 8, color: '#888', fontSize: 12 }}>
-                Make sure your GOG wishlist is public for import to work.
-              </p>
-            )}
-          </>
+        <p style={{ marginBottom: 12 }}>
+          Enter your {SHOP_META[linkModal?.shop]?.label}{' '}
+          {linkModal?.shop === 'gog' ? 'username' : 'Steam64 ID'} to link and import your wishlist.
+        </p>
+        <Input
+          placeholder={SHOP_META[linkModal?.shop]?.placeholder}
+          value={linkModal?.externalId || ''}
+          onChange={e => setLinkModal(prev => ({ ...prev, externalId: e.target.value }))}
+          onPressEnter={handleLinkByExternalId}
+          size="large"
+          autoFocus
+        />
+        {linkModal?.shop === 'gog' && (
+          <p style={{ marginTop: 8, color: '#888', fontSize: 12 }}>
+            Make sure your GOG wishlist is public for import to work.
+          </p>
         )}
       </Modal>
     </div>

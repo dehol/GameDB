@@ -11,12 +11,12 @@ namespace GameDB.Api.Controllers;
 public class WishlistController : ControllerBase
 {
     private readonly WishlistService _wishlist;
-    private readonly ShopOAuthService _oauth;
+    private readonly ShopLinkService _shopLink;
 
-    public WishlistController(WishlistService wishlist, ShopOAuthService oauth)
+    public WishlistController(WishlistService wishlist, ShopLinkService shopLink)
     {
         _wishlist = wishlist;
-        _oauth = oauth;
+        _shopLink = shopLink;
     }
 
     private int GetUserId() => int.Parse(User.FindFirstValue(ClaimTypes.NameIdentifier)!);
@@ -59,17 +59,17 @@ public class WishlistController : ControllerBase
     [Authorize(Roles = "user,admin")]
     public async Task<IActionResult> Import(string shop)
     {
-        var shopId = ShopOAuthService.ShopSlugToId(shop);
+        var shopId = ShopLinkService.ShopSlugToId(shop);
         if (shopId == null)
-            return BadRequest(new { error = $"Unknown shop: {shop}. Supported: steam, gog, egs" });
+            return BadRequest(new { error = $"Unknown shop: {shop}. Supported: steam, gog" });
 
         var userId = GetUserId();
 
-        if (!await _oauth.IsLinkedAsync(userId, shopId.Value))
+        if (!await _shopLink.IsLinkedAsync(userId, shopId.Value))
         {
             return StatusCode(403, new
             {
-                error = $"{shop} account not linked. Please link your account first via POST /api/oauth/{shop}/link"
+                error = $"{shop} account not linked. Please link your account first via POST /api/shoplink/{shop}/link"
             });
         }
 

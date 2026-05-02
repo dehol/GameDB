@@ -32,7 +32,6 @@ public record IgdbGame
     // Store URLs
     public string? SteamUrl { get; init; }    // category 13
     public string? GogUrl { get; init; }      // category 17
-    public string? EgsUrl { get; init; }      // category 16
 
     // Cover art from IGDB (proper cover, not screenshot)
     public string? CoverUrl { get; init; }

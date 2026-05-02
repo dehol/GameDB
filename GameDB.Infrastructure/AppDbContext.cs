@@ -175,7 +175,7 @@ public class AppDbContext : DbContext
         mb.Entity<StagingGame>()
             .HasIndex(s => s.IsProcessed);
         mb.Entity<StagingGame>()
-            .HasIndex(s => new { s.IgdbId, s.SteamAppId, s.GogId, s.EgsId });
+            .HasIndex(s => new { s.IgdbId, s.SteamAppId, s.GogId });
 
         // Seed data
         mb.Entity<Role>().HasData(
@@ -186,8 +186,7 @@ public class AppDbContext : DbContext
 
         mb.Entity<GameShop>().HasData(
             new GameShop { ShopId = 1, Name = "Steam", BaseUrl = "https://store.steampowered.com", ApiBaseUrl = "https://store.steampowered.com/api" },
-            new GameShop { ShopId = 2, Name = "GOG", BaseUrl = "https://www.gog.com", ApiBaseUrl = "https://api.gog.com" },
-            new GameShop { ShopId = 3, Name = "Epic Games Store", BaseUrl = "https://store.epicgames.com", ApiBaseUrl = "https://store.epicgames.com/graphql" }
+            new GameShop { ShopId = 2, Name = "GOG", BaseUrl = "https://www.gog.com", ApiBaseUrl = "https://api.gog.com" }
         );
 
         // Seed: Developers

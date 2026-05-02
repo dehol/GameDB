@@ -4,6 +4,7 @@ using System.Collections.Generic;
 using GameDB.Infrastructure;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 
@@ -12,9 +13,11 @@ using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 namespace GameDB.Infrastructure.Migrations
 {
     [DbContext(typeof(AppDbContext))]
-    partial class AppDbContextModelSnapshot : ModelSnapshot
+    [Migration("20260425122143_RemoveEgsAndItch")]
+    partial class RemoveEgsAndItch
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder
@@ -185,74 +188,74 @@ namespace GameDB.Infrastructure.Migrations
                         new
                         {
                             GameId = 1,
-                            CreatedAt = new DateTime(2026, 5, 2, 12, 8, 0, 140, DateTimeKind.Utc).AddTicks(4520),
+                            CreatedAt = new DateTime(2026, 4, 25, 12, 21, 42, 469, DateTimeKind.Utc).AddTicks(306),
                             Description = "An epic RPG set in the D&D universe",
                             DeveloperId = 1,
                             IsDlc = false,
                             PublisherId = 1,
                             ReleaseDate = new DateOnly(2023, 8, 3),
                             Title = "Baldur's Gate 3",
-                            UpdatedAt = new DateTime(2026, 5, 2, 12, 8, 0, 140, DateTimeKind.Utc).AddTicks(4521)
+                            UpdatedAt = new DateTime(2026, 4, 25, 12, 21, 42, 469, DateTimeKind.Utc).AddTicks(307)
                         },
                         new
                         {
                             GameId = 2,
-                            CreatedAt = new DateTime(2026, 5, 2, 12, 8, 0, 140, DateTimeKind.Utc).AddTicks(4527),
+                            CreatedAt = new DateTime(2026, 4, 25, 12, 21, 42, 469, DateTimeKind.Utc).AddTicks(313),
                             Description = "Open-world action RPG in a dystopian future",
                             DeveloperId = 2,
                             IsDlc = false,
                             PublisherId = 2,
                             ReleaseDate = new DateOnly(2020, 12, 10),
                             Title = "Cyberpunk 2077",
-                            UpdatedAt = new DateTime(2026, 5, 2, 12, 8, 0, 140, DateTimeKind.Utc).AddTicks(4528)
+                            UpdatedAt = new DateTime(2026, 4, 25, 12, 21, 42, 469, DateTimeKind.Utc).AddTicks(314)
                         },
                         new
                         {
                             GameId = 3,
-                            CreatedAt = new DateTime(2026, 5, 2, 12, 8, 0, 140, DateTimeKind.Utc).AddTicks(4532),
+                            CreatedAt = new DateTime(2026, 4, 25, 12, 21, 42, 469, DateTimeKind.Utc).AddTicks(319),
                             Description = "Open-world action RPG by FromSoftware and George R.R. Martin",
                             DeveloperId = 3,
                             IsDlc = false,
                             PublisherId = 3,
                             ReleaseDate = new DateOnly(2022, 2, 25),
                             Title = "Elden Ring",
-                            UpdatedAt = new DateTime(2026, 5, 2, 12, 8, 0, 140, DateTimeKind.Utc).AddTicks(4533)
+                            UpdatedAt = new DateTime(2026, 4, 25, 12, 21, 42, 469, DateTimeKind.Utc).AddTicks(320)
                         },
                         new
                         {
                             GameId = 4,
-                            CreatedAt = new DateTime(2026, 5, 2, 12, 8, 0, 140, DateTimeKind.Utc).AddTicks(4537),
+                            CreatedAt = new DateTime(2026, 4, 25, 12, 21, 42, 469, DateTimeKind.Utc).AddTicks(324),
                             Description = "Roguelike action sequel from Supergiant Games",
                             DeveloperId = 4,
                             IsDlc = false,
                             PublisherId = 4,
                             ReleaseDate = new DateOnly(2024, 5, 6),
                             Title = "Hades II",
-                            UpdatedAt = new DateTime(2026, 5, 2, 12, 8, 0, 140, DateTimeKind.Utc).AddTicks(4538)
+                            UpdatedAt = new DateTime(2026, 4, 25, 12, 21, 42, 469, DateTimeKind.Utc).AddTicks(324)
                         },
                         new
                         {
                             GameId = 5,
-                            CreatedAt = new DateTime(2026, 5, 2, 12, 8, 0, 140, DateTimeKind.Utc).AddTicks(4541),
+                            CreatedAt = new DateTime(2026, 4, 25, 12, 21, 42, 469, DateTimeKind.Utc).AddTicks(328),
                             Description = "Competitive tactical FPS",
                             DeveloperId = 5,
                             IsDlc = false,
                             PublisherId = 5,
                             ReleaseDate = new DateOnly(2023, 9, 27),
                             Title = "Counter-Strike 2",
-                            UpdatedAt = new DateTime(2026, 5, 2, 12, 8, 0, 140, DateTimeKind.Utc).AddTicks(4542)
+                            UpdatedAt = new DateTime(2026, 4, 25, 12, 21, 42, 469, DateTimeKind.Utc).AddTicks(329)
                         },
                         new
                         {
                             GameId = 6,
-                            CreatedAt = new DateTime(2026, 5, 2, 12, 8, 0, 140, DateTimeKind.Utc).AddTicks(4545),
+                            CreatedAt = new DateTime(2026, 4, 25, 12, 21, 42, 469, DateTimeKind.Utc).AddTicks(332),
                             Description = "Story-driven open world RPG",
                             DeveloperId = 2,
                             IsDlc = false,
                             PublisherId = 2,
                             ReleaseDate = new DateOnly(2015, 5, 19),
                             Title = "The Witcher 3: Wild Hunt",
-                            UpdatedAt = new DateTime(2026, 5, 2, 12, 8, 0, 140, DateTimeKind.Utc).AddTicks(4546)
+                            UpdatedAt = new DateTime(2026, 4, 25, 12, 21, 42, 469, DateTimeKind.Utc).AddTicks(333)
                         });
                 });
 
@@ -380,9 +383,6 @@ namespace GameDB.Infrastructure.Migrations
                     b.Property<int>("GameId")
                         .HasColumnType("integer");
 
-                    b.Property<bool>("IsFree")
-                        .HasColumnType("boolean");
-
                     b.Property<DateTime?>("PriceSyncedAt")
                         .HasColumnType("timestamp with time zone");
 
@@ -413,7 +413,6 @@ namespace GameDB.Infrastructure.Migrations
                             CurrentPrice = 59.99m,
                             ExternalId = "1086940",
                             GameId = 1,
-                            IsFree = false,
                             ShopId = 1
                         },
                         new
@@ -424,7 +423,6 @@ namespace GameDB.Infrastructure.Migrations
                             CurrentPrice = 59.99m,
                             ExternalId = "1086940",
                             GameId = 1,
-                            IsFree = false,
                             ShopId = 2
                         },
                         new
@@ -435,7 +433,6 @@ namespace GameDB.Infrastructure.Migrations
                             CurrentPrice = 29.99m,
                             ExternalId = "1091500",
                             GameId = 2,
-                            IsFree = false,
                             ShopId = 1
                         },
                         new
@@ -446,7 +443,6 @@ namespace GameDB.Infrastructure.Migrations
                             CurrentPrice = 29.99m,
                             ExternalId = "1423049",
                             GameId = 2,
-                            IsFree = false,
                             ShopId = 2
                         },
                         new
@@ -457,7 +453,6 @@ namespace GameDB.Infrastructure.Migrations
                             CurrentPrice = 59.99m,
                             ExternalId = "1245620",
                             GameId = 3,
-                            IsFree = false,
                             ShopId = 1
                         },
                         new
@@ -468,7 +463,6 @@ namespace GameDB.Infrastructure.Migrations
                             CurrentPrice = 29.99m,
                             ExternalId = "1145350",
                             GameId = 4,
-                            IsFree = false,
                             ShopId = 1
                         },
                         new
@@ -479,7 +473,6 @@ namespace GameDB.Infrastructure.Migrations
                             CurrentPrice = 0.00m,
                             ExternalId = "730",
                             GameId = 5,
-                            IsFree = false,
                             ShopId = 1
                         },
                         new
@@ -490,7 +483,6 @@ namespace GameDB.Infrastructure.Migrations
                             CurrentPrice = 9.99m,
                             ExternalId = "292030",
                             GameId = 6,
-                            IsFree = false,
                             ShopId = 1
                         },
                         new
@@ -501,7 +493,6 @@ namespace GameDB.Infrastructure.Migrations
                             CurrentPrice = 9.99m,
                             ExternalId = "1495134320",
                             GameId = 6,
-                            IsFree = false,
                             ShopId = 2
                         });
                 });
@@ -1064,6 +1055,9 @@ namespace GameDB.Infrastructure.Migrations
 
                     NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<int>("ProfileId"));
 
+                    b.Property<string>("AccessToken")
+                        .HasColumnType("text");
+
                     b.Property<string>("ExternalUid")
                         .IsRequired()
                         .HasColumnType("text");
@@ -1071,8 +1065,14 @@ namespace GameDB.Infrastructure.Migrations
                     b.Property<DateTime>("LinkedAt")
                         .HasColumnType("timestamp with time zone");
 
+                    b.Property<string>("RefreshToken")
+                        .HasColumnType("text");
+
                     b.Property<int>("ShopId")
                         .HasColumnType("integer");
+
+                    b.Property<DateTime?>("TokenExpiresAt")
+                        .HasColumnType("timestamp with time zone");
 
                     b.Property<int>("UserId")
                         .HasColumnType("integer");

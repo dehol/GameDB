@@ -7,8 +7,6 @@ using GameDB.Core.Models;
 using GameDB.Infrastructure.Caching;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
-using System.Collections.Concurrent;
-using System.Text.Json;
 using System.Text.RegularExpressions;
 
 namespace GameDB.Infrastructure.Services;
@@ -17,7 +15,6 @@ public class GameImportService
 {
     private readonly AppDbContext _db;
     private readonly IIgdbApiService _igdb;
-    private readonly IHttpClientFactory _httpFactory;
     private readonly ReferenceDataCache _cache;
     private readonly ILogger<GameImportService> _logger;
     private readonly ImportSettings _settings;
@@ -25,14 +22,12 @@ public class GameImportService
     public GameImportService(
         AppDbContext db,
         IIgdbApiService igdb,
-        IHttpClientFactory httpFactory,
         ReferenceDataCache cache,
         ILogger<GameImportService> logger,
         ImportSettings settings)
     {
         _db = db;
         _igdb = igdb;
-        _httpFactory = httpFactory;
         _cache = cache;
         _logger = logger;
         _settings = settings;
@@ -54,19 +49,10 @@ public class GameImportService
 
         if (ct.IsCancellationRequested) return;
 
-        job.CurrentPhase = "enriching_prices";
-        await _db.SaveChangesAsync(ct);
-
-        // Skip Steam price enrichment - prices will be synced separately via PriceSyncWorker
-        _logger.LogInformation("Skipping Steam price enrichment - will be synced separately");
-        var enriched = games;
-
-        if (ct.IsCancellationRequested) return;
-
         job.CurrentPhase = "importing";
         await _db.SaveChangesAsync(ct);
 
-        await ImportToDatabaseAsync(enriched, job, options, ct);
+        await ImportToDatabaseAsync(games, job, options, ct);
 
         job.Status = ImportJobStatus.Completed;
         job.CompletedAt = DateTime.UtcNow;
@@ -85,8 +71,8 @@ public class GameImportService
         // Skip already imported IGDB IDs
         var existingIgdbIds = (await _db.Games
             .AsNoTracking()
-            .Where(g => g.RawgId != null) // reusing RawgId column for IGDB ID
-            .Select(g => g.RawgId!.Value)
+            .Where(g => g.IgdbId != null) // IGDB ID for deduplication
+            .Select(g => g.IgdbId!.Value)
             .ToListAsync(ct))
             .ToHashSet();
 
@@ -115,7 +101,7 @@ public class GameImportService
             Developer  = g.Developer,
             Publisher  = g.Publisher,
             Genres     = g.Genres,
-            RawgId     = g.Id,
+            IgdbId     = g.Id,
             Offers     = BuildOffers(g),
             CoverUrl   = g.CoverUrl,
             Rating     = g.Rating,
@@ -129,7 +115,7 @@ public class GameImportService
         var skippedCount = imports.Count - gamesWithOffers.Count;
         if (skippedCount > 0)
         {
-            _logger.LogInformation("IGDB: Skipped {Count} games with no store offers (Steam/GOG/EGS)", skippedCount);
+            _logger.LogInformation("IGDB: Skipped {Count} games with no store offers (Steam/GOG)", skippedCount);
         }
 
         _logger.LogInformation("IGDB: {Count} games collected for import", gamesWithOffers.Count);
@@ -168,17 +154,6 @@ public class GameImportService
                 });
         }
 
-        if (g.EgsUrl != null)
-        {
-            var egsId = ExtractEgsId(g.EgsUrl);
-            if (egsId != null)
-                offers.Add(new GameOfferImport
-                {
-                    ShopId     = ShopConstants.EpicGames,
-                    ExternalId = egsId
-                });
-        }
-
         return offers;
     }
 
@@ -195,91 +170,7 @@ public class GameImportService
         return m.Success ? m.Groups[1].Value : null;
     }
 
-    private static string? ExtractEgsId(string url)
-    {
-        // EGS URLs: https://store.epicgames.com/en-US/p/game-slug
-        var m = Regex.Match(url, @"epicgames\.com/.+?/p/([^/?#]+)");
-        return m.Success ? m.Groups[1].Value : null;
-    }
-
-    // ── Phase 2: Steam prices ─────────────────────────────────────────────
-
-    private async Task<List<GameImport>> EnrichWithSteamPricesAsync(
-        List<GameImport> games, CancellationToken ct)
-    {
-        var steamGames = games
-            .Where(g => g.Offers.Any(o => o.ShopId == ShopConstants.Steam))
-            .ToList();
-
-        if (steamGames.Count == 0) return games;
-
-        _logger.LogInformation("Fetching Steam prices for {Count} games", steamGames.Count);
-
-        var client    = _httpFactory.CreateClient();
-        var semaphore = new SemaphoreSlim(2);
-        var priceMap  = new ConcurrentDictionary<string, (decimal? price, short? discount)>();
-
-        var batches = steamGames
-            .Select(g => g.Offers.First(o => o.ShopId == ShopConstants.Steam).ExternalId)
-            .Distinct()
-            .Chunk(_settings.SteamBatchSize);
-
-        foreach (var batch in batches)
-        {
-            await semaphore.WaitAsync(ct);
-            try
-            {
-                var ids = string.Join(",", batch);
-                var url = $"https://store.steampowered.com/api/appdetails" +
-                          $"?appids={ids}&cc=us&filters=price_overview";
-                using var resp = await client.GetAsync(url, ct);
-                if (!resp.IsSuccessStatusCode) continue;
-                ParseSteamPrices(await resp.Content.ReadAsStringAsync(ct), priceMap);
-            }
-            catch (Exception ex) { _logger.LogWarning(ex, "Steam price batch failed"); }
-            finally { semaphore.Release(); }
-        }
-
-        _logger.LogInformation("Got Steam prices for {Count} games", priceMap.Count);
-
-        return games.Select(game =>
-        {
-            var offer = game.Offers.FirstOrDefault(o => o.ShopId == ShopConstants.Steam);
-            if (offer == null || !priceMap.TryGetValue(offer.ExternalId, out var p))
-                return game;
-
-            return game with
-            {
-                Offers = game.Offers.Select(o =>
-                    o.ShopId == ShopConstants.Steam
-                        ? o with { CurrentPrice = p.price, CurrentDiscount = p.discount }
-                        : o).ToList()
-            };
-        }).ToList();
-    }
-
-    private static void ParseSteamPrices(string json,
-        ConcurrentDictionary<string, (decimal?, short?)> map)
-    {
-        using var doc = JsonDocument.Parse(json);
-        foreach (var prop in doc.RootElement.EnumerateObject())
-        {
-            var data = prop.Value;
-            if (!data.TryGetProperty("success", out var s) || !s.GetBoolean()) continue;
-            if (!data.TryGetProperty("data", out var gd)) continue;
-            if (!gd.TryGetProperty("price_overview", out var po)) continue;
-
-            var final   = po.TryGetProperty("final",   out var f) ? f.GetInt32() : 0;
-            var initial = po.TryGetProperty("initial", out var i) ? i.GetInt32() : 0;
-
-            map[prop.Name] = (
-                final / 100m,
-                initial > 0 ? (short)Math.Round((1d - (double)final / initial) * 100) : (short)0
-            );
-        }
-    }
-
-    // ── Phase 3: Import to DB ─────────────────────────────────────────────
+    // ── Phase 2: Import to DB ─────────────────────────────────────────────
 
     private async Task ImportToDatabaseAsync(
         List<GameImport> games, ImportJob job, ImportPipelineOptions options, CancellationToken ct)
@@ -431,7 +322,7 @@ public class GameImportService
                         NormalizedTitle = import.NormalizedTitle,
                         Description     = import.Description,
                         ReleaseDate     = import.ReleaseDate,
-                        RawgId          = import.RawgId,
+                        IgdbId          = import.IgdbId,
                         CoverUrl        = import.CoverUrl,
                         DeveloperId     = await _cache.GetOrCreateDeveloperIdAsync(import.Developer),
                         PublisherId     = await _cache.GetOrCreatePublisherIdAsync(import.Publisher),
@@ -558,15 +449,7 @@ public class GameImportService
 
             if (existing != null)
             {
-                if (import.CurrentPrice.HasValue &&
-                    (existing.CurrentPrice    != import.CurrentPrice.Value ||
-                     existing.CurrentDiscount != (import.CurrentDiscount ?? 0)))
-                {
-                    existing.CurrentPrice    = import.CurrentPrice.Value;
-                    existing.CurrentDiscount = import.CurrentDiscount ?? 0;
-                    existing.PriceSyncedAt   = DateTime.UtcNow;
-                    offersToUpdate.Add(existing);
-                }
+                // Prices are managed by PriceSyncService — skip price updates here
             }
             else
             {
@@ -579,7 +462,7 @@ public class GameImportService
                     CurrentDiscount = import.CurrentDiscount ?? 0,
                     Currency        = import.Currency,
                     DownloadUrl     = ShopConstants.GetStoreUrl(import.ShopId, import.ExternalId),
-                    PriceSyncedAt   = DateTime.UtcNow
+                    // PriceSyncedAt left null — price will be set by PriceSyncService
                 };
                 newOffers.Add(offer);
                 existingOffers[key] = offer;

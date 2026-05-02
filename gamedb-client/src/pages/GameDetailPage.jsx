@@ -36,7 +36,11 @@ export default function GameDetailPage() {
 
   const offerColumns = [
     { title: 'Shop', dataIndex: 'shopName', key: 'shop' },
-    { title: 'Price', dataIndex: 'currentPrice', key: 'price', render: v => `$${Number(v).toFixed(2)}` },
+    { title: 'Price', dataIndex: 'currentPrice', key: 'price', render: (v, record) => {
+      if (record.isFree) return <Tag color="green">Free</Tag>;
+      if (v === 0) return '—';
+      return `$${Number(v).toFixed(2)}`;
+    }},
     { title: 'Discount', dataIndex: 'currentDiscount', key: 'disc', render: v => v > 0 ? <Tag color="red">-{v}%</Tag> : '—' },
     { title: 'Link', dataIndex: 'downloadUrl', key: 'link', render: v => v ? <a href={v} target="_blank" rel="noreferrer">Buy</a> : '—' },
   ];
@@ -88,8 +92,8 @@ export default function GameDetailPage() {
             <LineChart data={allPriceHistory}>
               <CartesianGrid strokeDasharray="3 3" />
               <XAxis dataKey="recordedAt" />
-              <YAxis />
-              <Tooltip />
+              <YAxis domain={['dataMin * 0.9', 'dataMax * 1.1']} tickFormatter={v => `$${v.toFixed(0)}`} />
+              <Tooltip formatter={v => `$${Number(v).toFixed(2)}`} />
               <Line type="monotone" dataKey="price" stroke="#1890ff" strokeWidth={2} dot={false} />
             </LineChart>
           </ResponsiveContainer>

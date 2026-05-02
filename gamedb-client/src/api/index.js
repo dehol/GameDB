@@ -82,14 +82,13 @@ export const api = {
   toggleWishlist: (gameId) => request(`/wishlist/${gameId}/toggle`, { method: 'POST' }),
   importWishlist: (shop) => request(`/wishlist/import/${shop}`, { method: 'POST' }),
 
-  // OAuth
-  getOAuthAuthorizeUrl: (shop) => request(`/oauth/${shop}/authorize`),
-  getOAuthStatus: (shop) => request(`/oauth/${shop}/status`),
-  linkShopByExternalId: (shop, externalId) => request(`/oauth/${shop}/link`, {
+  // Shop linking
+  getShopLinkStatus: (shop) => request(`/shoplink/${shop}/status`),
+  linkShopByExternalId: (shop, externalId) => request(`/shoplink/${shop}/link`, {
     method: 'POST',
     body: JSON.stringify({ externalId }),
   }),
-  unlinkShop: (shop) => request(`/oauth/${shop}/unlink`, { method: 'DELETE' }),
+  unlinkShop: (shop) => request(`/shoplink/${shop}/unlink`, { method: 'DELETE' }),
 
   // Profile
   getProfile: () => request('/profile'),
@@ -115,4 +114,9 @@ export const api = {
   startImportPipeline: (options = {}) => request('/import/start', { method: 'POST', body: JSON.stringify(options) }),
   getImportPipelineStatus: (pipelineId) => request(`/import/status/${pipelineId}`),
   getCurrentImportPipeline: () => request('/import/current'),
+  
+  // API для синхронізації цін
+  syncAll: () => request('/sync/sync', { method: 'POST' }),
+  syncSteam: () => request('/sync/steam', { method: 'POST' }),
+  syncGog: () => request('/sync/gog', { method: 'POST' }),
 };

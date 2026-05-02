@@ -4,6 +4,7 @@ import { SyncOutlined, ImportOutlined } from '@ant-design/icons';
 import { api } from '../../api';
 
 export default function SyncPage() {
+  const [allResult, setAllResult] = useState(null);
   const [steamResult, setSteamResult] = useState(null);
   const [gogResult, setGogResult] = useState(null);
   const [importResult, setImportResult] = useState(null);
@@ -18,6 +19,16 @@ export default function SyncPage() {
   useEffect(() => () => {
     if (pollRef.current) clearInterval(pollRef.current);
   }, []);
+
+  const syncAll = async () => {
+    setLoading('all');
+    try {
+      const res = await api.syncAll();
+      setAllResult(res);
+      message.success('All shops sync completed');
+    } catch (e) { message.error(e.message); }
+    setLoading(null);
+  };
 
   const syncSteam = async () => {
     setLoading('steam');
@@ -107,11 +118,7 @@ export default function SyncPage() {
       {result && (
         <Descriptions bordered column={1} style={{ marginTop: 16 }}>
           {result.pipelineId !== undefined && <Descriptions.Item label="Pipeline ID">{result.pipelineId}</Descriptions.Item>}
-          {result.jobId !== undefined && <Descriptions.Item label="Job ID">{result.jobId}</Descriptions.Item>}
           {result.status !== undefined && <Descriptions.Item label="Status">{result.status}</Descriptions.Item>}
-          {result.currentPhase !== undefined && (
-            <Descriptions.Item label="Phase">{result.currentPhase}</Descriptions.Item>
-          )}
           {result.totalGames != null && result.totalGames > 0 && (
             <Descriptions.Item label="Progress">
               <Progress
@@ -124,8 +131,6 @@ export default function SyncPage() {
             </Descriptions.Item>
           )}
           {result.importedGames !== undefined && <Descriptions.Item label="Imported">{result.importedGames}</Descriptions.Item>}
-          {result.errorCount !== undefined && <Descriptions.Item label="Errors">{result.errorCount}</Descriptions.Item>}
-          {result.imported !== undefined && <Descriptions.Item label="Imported">{result.imported}</Descriptions.Item>}
           {result.updated !== undefined && <Descriptions.Item label="Updated">{result.updated}</Descriptions.Item>}
           {result.errors !== undefined && <Descriptions.Item label="Errors">{result.errors}</Descriptions.Item>}
           {result.scanned !== undefined && <Descriptions.Item label="Scanned">{result.scanned}</Descriptions.Item>}
@@ -137,6 +142,7 @@ export default function SyncPage() {
   return (
     <div>
       <h2>Price Sync</h2>
+      <ResultCard title="Sync All Shops" result={allResult} onSync={syncAll} name="all" icon={<SyncOutlined />} />
       <ResultCard title="Steam Sync" result={steamResult} onSync={syncSteam} name="steam" icon={<SyncOutlined />} />
       <ResultCard title="GOG Sync" result={gogResult} onSync={syncGog} name="gog" icon={<SyncOutlined />} />
 

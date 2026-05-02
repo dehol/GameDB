@@ -56,4 +56,16 @@ public class ImportSettings
     /// Number of days to keep processed RawGameData before cleanup
     /// </summary>
     public int RawDataRetentionDays { get; set; } = 7;
+
+    /// <summary>
+    /// How often (in hours) the PriceSyncWorker runs automatic price sync.
+    /// Also used as the staleness threshold: offers synced less than this many hours ago are skipped.
+    /// </summary>
+    public int PriceSyncIntervalHours { get; set; } = 1;
+
+    /// <summary>
+    /// Max number of offers to sync per shop per run. Set to 0 for unlimited.
+    /// Use a small number (e.g. 50) for testing.
+    /// </summary>
+    public int PriceSyncMaxOffers { get; set; } = 0;
 }

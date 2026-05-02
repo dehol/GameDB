@@ -17,8 +17,8 @@ public record GameImport
     // Offers from different stores (0-N offers per game)
     public List<GameOfferImport> Offers { get; init; } = new();
     
-    // External IDs for matching (RAWG ID used for deduplication)
-    public int? RawgId { get; init; }
+    // External IDs for matching (IGDB ID used for deduplication)
+    public int? IgdbId { get; init; }
     
     // Cover art URL (from IGDB cover field)
     public string? CoverUrl { get; init; }

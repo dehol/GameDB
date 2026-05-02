@@ -4,15 +4,13 @@ import { LinkOutlined, DisconnectOutlined } from '@ant-design/icons';
 import { api } from '../api';
 
 const SHOPS = [
-  { slug: 'steam', label: 'Steam', color: '#1b2838', placeholder: 'Steam64 ID (e.g. 765611980...)', useOAuth: true },
-  { slug: 'gog', label: 'GOG', color: '#86328a', placeholder: 'GOG username', useOAuth: false },
-  { slug: 'egs', label: 'Epic Games Store', color: '#0078f2', placeholder: 'Epic display name', useOAuth: false },
+  { slug: 'steam', label: 'Steam', color: '#1b2838', placeholder: 'Steam64 ID (e.g. 765611980...)' },
+  { slug: 'gog', label: 'GOG', color: '#86328a', placeholder: 'GOG username' },
 ];
 
 export default function ProfilePage() {
   const [profile, setProfile] = useState(null);
   const [loading, setLoading] = useState(true);
-  const [linking, setLinking] = useState(null);
   const [linkModal, setLinkModal] = useState(null); // { shop, externalId }
   const [linkingExternal, setLinkingExternal] = useState(false);
 
@@ -20,23 +18,8 @@ export default function ProfilePage() {
     api.getProfile().then(setProfile).catch(e => message.error(e.message)).finally(() => setLoading(false));
   }, []);
 
-  const linkShop = async (shop) => {
-    if (shop.useOAuth) {
-      // Steam — use OpenID
-      setLinking(shop.slug);
-      try {
-        const res = await api.getOAuthAuthorizeUrl(shop.slug);
-        if (res.url) {
-          window.location.href = res.url;
-        }
-      } catch (e) {
-        message.error(e.message);
-      }
-      setLinking(null);
-    } else {
-      // GOG/EGS — show input modal
-      setLinkModal({ shop, externalId: '' });
-    }
+  const linkShop = (shop) => {
+    setLinkModal({ shop, externalId: '' });
   };
 
   const handleLinkByExternalId = async () => {
@@ -90,8 +73,7 @@ export default function ProfilePage() {
             {SHOPS.map(shop => {
               const linkedProfile = profile.shopProfiles?.find(sp =>
                 (shop.slug === 'steam' && sp.shopId === 1) ||
-                (shop.slug === 'gog' && sp.shopId === 2) ||
-                (shop.slug === 'egs' && sp.shopId === 3)
+                (shop.slug === 'gog' && sp.shopId === 2)
               );
               const isLinked = !!linkedProfile;
 
@@ -132,7 +114,6 @@ export default function ProfilePage() {
                       type="primary"
                       icon={<LinkOutlined />}
                       onClick={() => linkShop(shop)}
-                      loading={linking === shop.slug}
                       style={{ background: shop.color, borderColor: shop.color }}
                     >
                       Link {shop.label}
@@ -154,7 +135,7 @@ export default function ProfilePage() {
         confirmLoading={linkingExternal}
       >
         <p style={{ marginBottom: 12 }}>
-          Enter your {linkModal?.shop?.label} {linkModal?.shop?.slug === 'gog' ? 'username' : 'display name'} to link your account.
+          Enter your {linkModal?.shop?.label} {linkModal?.shop?.slug === 'gog' ? 'username' : 'Steam64 ID'} to link your account.
         </p>
         <Input
           placeholder={linkModal?.shop?.placeholder}

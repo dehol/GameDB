@@ -33,11 +33,6 @@ public class StagingGame
     /// </summary>
     public string? GogId { get; set; }
     
-    /// <summary>
-    /// Epic Games Store product ID
-    /// </summary>
-    public string? EgsId { get; set; }
-    
     // Normalized data from IGDB
     public string Title { get; set; } = null!;
     public string? Description { get; set; }
@@ -66,10 +61,6 @@ public class StagingGame
     // Price data from GOG
     public decimal? GogPrice { get; set; }
     public short? GogDiscount { get; set; }
-    
-    // Price data from EGS
-    public decimal? EgsPrice { get; set; }
-    public short? EgsDiscount { get; set; }
     
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
     public DateTime UpdatedAt { get; set; } = DateTime.UtcNow;
