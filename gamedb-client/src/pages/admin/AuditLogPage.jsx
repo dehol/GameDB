@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { Card, Table, Form, Input, InputNumber, DatePicker, Button, Space, Tag } from 'antd';
 import dayjs from 'dayjs';
 import { api } from '../../api';
@@ -8,7 +8,7 @@ export default function AuditLogPage() {
   const [loading, setLoading] = useState(false);
   const [items, setItems] = useState([]);
 
-  const load = async (overrides = {}) => {
+  const load = useCallback(async (overrides = {}) => {
     setLoading(true);
     const values = form.getFieldsValue();
 
@@ -27,11 +27,11 @@ export default function AuditLogPage() {
     } finally {
       setLoading(false);
     }
-  };
+  }, [form]);
 
   useEffect(() => {
     load();
-  }, []);
+  }, [load]);
 
   const columns = [
     { title: 'ID', dataIndex: 'auditLogId', key: 'auditLogId', width: 90 },

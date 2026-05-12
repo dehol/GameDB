@@ -491,7 +491,7 @@ public class GameImportService
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "Failed bulk insert for GameGenre records. Falling back to per-record insert.");
+                _logger.LogError(ex, "Bulk insert for GameGenre records failed, attempting per-record insert fallback.");
                 foreach (var genre in distinctGenres)
                 {
                     try
@@ -589,9 +589,6 @@ public class GameImportService
                     }
                 }
             }
-        }
-        if (offersToUpdate.Count > 0)
-        {
             var distinctUpdatedOffers = offersToUpdate
                 .GroupBy(o => o.GameOfferId)
                 .Select(g => g.First())

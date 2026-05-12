@@ -45,31 +45,36 @@ public class AuditLogController : ControllerBase
             query = query.Where(l =>
                 (l.ActionType != null && l.ActionType.Contains(search)) ||
                 (l.EntityId != null && l.EntityId.Contains(search)) ||
-                (l.OldValue != null && l.OldValue.Contains(search)) ||
-                (l.NewValue != null && l.NewValue.Contains(search)) ||
                 (l.IPAddress != null && l.IPAddress.Contains(search)));
         }
 
         var total = await query.CountAsync();
 
+        var users = _db.Users.AsNoTracking().Select(u => new { u.UserId, u.Username });
+
         var items = await query
             .OrderByDescending(l => l.Timestamp)
             .Skip((page - 1) * pageSize)
             .Take(pageSize)
-            .Select(l => new
-            {
-                l.AuditLogId,
-                l.UserId,
-                username = l.UserId == null
-                    ? null
-                    : _db.Users.Where(u => u.UserId == l.UserId.Value).Select(u => u.Username).FirstOrDefault(),
-                l.Timestamp,
-                l.ActionType,
-                l.EntityId,
-                l.OldValue,
-                l.NewValue,
-                l.IPAddress
-            })
+            .GroupJoin(
+                users,
+                log => log.UserId,
+                user => (int?)user.UserId,
+                (log, userGroup) => new { log, userGroup })
+            .SelectMany(
+                x => x.userGroup.DefaultIfEmpty(),
+                (x, user) => new
+                {
+                    x.log.AuditLogId,
+                    x.log.UserId,
+                    username = user != null ? user.Username : null,
+                    x.log.Timestamp,
+                    x.log.ActionType,
+                    x.log.EntityId,
+                    x.log.OldValue,
+                    x.log.NewValue,
+                    x.log.IPAddress
+                })
             .ToListAsync();
 
         return Ok(new
