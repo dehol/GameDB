@@ -3,6 +3,7 @@ using GameDB.Core.Interfaces;
 using GameDB.Core.Models;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
+using System.Text.RegularExpressions;
 
 namespace GameDB.Infrastructure.Services;
 
@@ -117,10 +118,11 @@ public class GameMatchingService : IGameMatchingService
     private static string NormalizeTitle(string title)
     {
         if (string.IsNullOrWhiteSpace(title)) return "";
-        return new string(title.ToLower()
+        var cleaned = new string(title.ToLower()
             .Replace(":", "").Replace("-", " ").Replace("'", "")
             .Replace("™", "").Replace("®", "").Replace("©", "")
             .Where(c => char.IsLetterOrDigit(c) || c == ' ').ToArray())
-            .Trim().Replace("  ", " ");
+            .Trim();
+        return Regex.Replace(cleaned, "\\s+", " ");
     }
 }
