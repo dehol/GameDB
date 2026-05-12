@@ -82,8 +82,9 @@ public class WishlistService
             cmd.Parameters.Add(p2);
 
             var result = await cmd.ExecuteScalarAsync();
-            var added = result != null && (bool)result;
-
+            if (result is not bool added)
+                throw new InvalidOperationException("fn_toggle_wishlist did not return a boolean value.");
+            
             return added
                 ? (true, "Added to wishlist")
                 : (false, "Removed from wishlist");
@@ -95,7 +96,7 @@ public class WishlistService
     }
 
     /// <summary>
-    /// Universal import method â€” routes to shop-specific import logic.
+    /// Universal import method — routes to shop-specific import logic.
     /// Requires user to have linked their shop account (ExternalUid in UserShopProfile).
     /// </summary>
     public async Task<(int imported, string? error)> ImportAsync(int userId, int shopId)
@@ -212,7 +213,7 @@ public class WishlistService
     /// <summary>
     /// Import wishlist from GOG using the public JSON API.
     /// Endpoint: GET https://www.gog.com/u/{username}/wishlist/games/json
-    /// Returns an array of objects with numeric "id" field â€” no auth needed for public wishlists.
+    /// Returns an array of objects with numeric "id" field — no auth needed for public wishlists.
     /// </summary>
     public async Task<(int imported, string? error)> ImportGogAsync(int userId, string gogUsername)
     {
@@ -220,7 +221,7 @@ public class WishlistService
         {
             var client = _httpFactory.CreateClient();
 
-            // This is the correct GOG public JSON endpoint â€” /wishlist (without /games/json)
+            // This is the correct GOG public JSON endpoint — /wishlist (without /games/json)
             // returns HTML (Angular SPA), which is unparseable via regex.
             var url = $"https://www.gog.com/u/{Uri.EscapeDataString(gogUsername)}/wishlist/games/json";
 
