@@ -114,9 +114,29 @@ export const api = {
   startImportPipeline: (options = {}) => request('/import/start', { method: 'POST', body: JSON.stringify(options) }),
   getImportPipelineStatus: (pipelineId) => request(`/import/status/${pipelineId}`),
   getCurrentImportPipeline: () => request('/import/current'),
-  
-  // API для синхронізації цін
-  syncAll: () => request('/sync/sync', { method: 'POST' }),
-  syncSteam: () => request('/sync/steam', { method: 'POST' }),
-  syncGog: () => request('/sync/gog', { method: 'POST' }),
+  getImportJobs: (params = {}) => {
+    const q = new URLSearchParams();
+    if (params.page) q.set('page', params.page);
+    if (params.pageSize) q.set('pageSize', params.pageSize);
+    if (params.status) q.set('status', params.status);
+    return request(`/import/jobs?${q}`);
+  },
+  getImportJobDetails: (pipelineId) => request(`/import/jobs/${pipelineId}`),
+  getImportJobLogs: (pipelineId, params = {}) => {
+    const q = new URLSearchParams();
+    if (params.level) q.set('level', params.level);
+    if (params.take) q.set('take', params.take);
+    return request(`/import/jobs/${pipelineId}/logs?${q}`);
+  },
+  getAuditLogs: (params = {}) => {
+    const q = new URLSearchParams();
+    if (params.userId) q.set('userId', params.userId);
+    if (params.actionType) q.set('actionType', params.actionType);
+    if (params.from) q.set('from', params.from);
+    if (params.to) q.set('to', params.to);
+    if (params.search) q.set('search', params.search);
+    if (params.page) q.set('page', params.page);
+    if (params.pageSize) q.set('pageSize', params.pageSize);
+    return request(`/admin/audit-log?${q}`);
+  },
 };

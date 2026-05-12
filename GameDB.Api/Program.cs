@@ -12,9 +12,13 @@ using System.Threading.Channels;
 
 var builder = WebApplication.CreateBuilder(args);
 
+builder.Services.AddHttpContextAccessor();
+builder.Services.AddScoped<AuditSaveChangesInterceptor>();
+
 // DB
-builder.Services.AddDbContext<AppDbContext>(opt =>
-    opt.UseNpgsql(builder.Configuration.GetConnectionString("Default")));
+builder.Services.AddDbContext<AppDbContext>((sp, opt) =>
+    opt.UseNpgsql(builder.Configuration.GetConnectionString("Default"))
+       .AddInterceptors(sp.GetRequiredService<AuditSaveChangesInterceptor>()));
 
 // Configuration
 builder.Services.Configure<IgdbSettings>(
@@ -47,6 +51,10 @@ builder.Services.Configure<ItadSettings>(builder.Configuration.GetSection("ItadS
 // Read the ItadSettings section from appsettings.json
 var itadSettings = builder.Configuration.GetSection("ItadSettings").Get<ItadSettings>() 
                    ?? new ItadSettings();
+builder.Services.AddScoped<IAuditService, AuditService>();
+builder.Services.AddScoped<IDataProvider, SteamDataProvider>();
+builder.Services.AddScoped<IDataProvider, GogDataProvider>();
+builder.Services.AddScoped<IDataProvider, EgsDataProvider>();
 
 // Register it so the DI container can inject it into PriceSyncService
 builder.Services.AddSingleton(itadSettings);

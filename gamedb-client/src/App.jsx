@@ -17,6 +17,7 @@ import LibraryPage from './pages/LibraryPage';
 import NotificationsPage from './pages/NotificationsPage';
 import GamesAdminPage from './pages/admin/GamesAdminPage';
 import SyncPage from './pages/admin/SyncPage';
+import AuditLogPage from './pages/admin/AuditLogPage';
 
 const { Header, Content, Sider } = Layout;
 
@@ -74,6 +75,7 @@ function AppLayout() {
       { type: 'divider' },
       { key: '/admin/games', icon: <SettingOutlined />, label: <Link to="/admin/games">Admin: Games</Link> },
       { key: '/admin/sync', icon: <SyncOutlined />, label: <Link to="/admin/sync">Admin: Sync</Link> },
+      { key: '/admin/audit-log', icon: <BookOutlined />, label: <Link to="/admin/audit-log">Admin: Audit Log</Link> },
     );
   }
 
@@ -104,6 +106,7 @@ function AppLayout() {
             <Route path="/library" element={<PrivateRoute><LibraryPage /></PrivateRoute>} />
             <Route path="/admin/games" element={<AdminRoute><GamesAdminPage /></AdminRoute>} />
             <Route path="/admin/sync" element={<AdminRoute><SyncPage /></AdminRoute>} />
+            <Route path="/admin/audit-log" element={<AdminRoute><AuditLogPage /></AdminRoute>} />
             <Route path="*" element={<Navigate to="/" replace />} />
           </Routes>
         </Content>

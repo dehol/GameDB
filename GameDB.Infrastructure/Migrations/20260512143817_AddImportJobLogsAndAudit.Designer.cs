@@ -4,6 +4,7 @@ using System.Collections.Generic;
 using GameDB.Infrastructure;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 
@@ -12,9 +13,11 @@ using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 namespace GameDB.Infrastructure.Migrations
 {
     [DbContext(typeof(AppDbContext))]
-    partial class AppDbContextModelSnapshot : ModelSnapshot
+    [Migration("20260512143817_AddImportJobLogsAndAudit")]
+    partial class AddImportJobLogsAndAudit
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder
@@ -165,12 +168,6 @@ namespace GameDB.Infrastructure.Migrations
 
                     NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<int>("GameId"));
 
-                    b.Property<string>("ContentType")
-                        .HasColumnType("text");
-
-                    b.Property<string>("CoverUrl")
-                        .HasColumnType("text");
-
                     b.Property<DateTime>("CreatedAt")
                         .HasColumnType("timestamp with time zone");
 
@@ -178,9 +175,6 @@ namespace GameDB.Infrastructure.Migrations
                         .HasColumnType("text");
 
                     b.Property<int?>("DeveloperId")
-                        .HasColumnType("integer");
-
-                    b.Property<int?>("IgdbId")
                         .HasColumnType("integer");
 
                     b.Property<bool>("IsDlc")
@@ -196,6 +190,9 @@ namespace GameDB.Infrastructure.Migrations
                         .HasColumnType("double precision");
 
                     b.Property<int?>("RatingCount")
+                        .HasColumnType("integer");
+
+                    b.Property<int?>("RawgId")
                         .HasColumnType("integer");
 
                     b.Property<DateOnly?>("ReleaseDate")
@@ -224,75 +221,74 @@ namespace GameDB.Infrastructure.Migrations
                         new
                         {
                             GameId = 1,
-                            CreatedAt = new DateTime(2026, 4, 22, 15, 10, 0, 33, DateTimeKind.Utc).AddTicks(7756),
-                            CreatedAt = new DateTime(2026, 5, 2, 12, 8, 0, 140, DateTimeKind.Utc).AddTicks(4520),
+                            CreatedAt = new DateTime(2026, 5, 12, 14, 38, 17, 465, DateTimeKind.Utc).AddTicks(9135),
                             Description = "An epic RPG set in the D&D universe",
                             DeveloperId = 1,
                             IsDlc = false,
                             PublisherId = 1,
                             ReleaseDate = new DateOnly(2023, 8, 3),
                             Title = "Baldur's Gate 3",
-                            UpdatedAt = new DateTime(2026, 5, 2, 12, 8, 0, 140, DateTimeKind.Utc).AddTicks(4521)
+                            UpdatedAt = new DateTime(2026, 5, 12, 14, 38, 17, 465, DateTimeKind.Utc).AddTicks(9136)
                         },
                         new
                         {
                             GameId = 2,
-                            CreatedAt = new DateTime(2026, 5, 2, 12, 8, 0, 140, DateTimeKind.Utc).AddTicks(4527),
+                            CreatedAt = new DateTime(2026, 5, 12, 14, 38, 17, 465, DateTimeKind.Utc).AddTicks(9142),
                             Description = "Open-world action RPG in a dystopian future",
                             DeveloperId = 2,
                             IsDlc = false,
                             PublisherId = 2,
                             ReleaseDate = new DateOnly(2020, 12, 10),
                             Title = "Cyberpunk 2077",
-                            UpdatedAt = new DateTime(2026, 5, 2, 12, 8, 0, 140, DateTimeKind.Utc).AddTicks(4528)
+                            UpdatedAt = new DateTime(2026, 5, 12, 14, 38, 17, 465, DateTimeKind.Utc).AddTicks(9143)
                         },
                         new
                         {
                             GameId = 3,
-                            CreatedAt = new DateTime(2026, 5, 2, 12, 8, 0, 140, DateTimeKind.Utc).AddTicks(4532),
+                            CreatedAt = new DateTime(2026, 5, 12, 14, 38, 17, 465, DateTimeKind.Utc).AddTicks(9146),
                             Description = "Open-world action RPG by FromSoftware and George R.R. Martin",
                             DeveloperId = 3,
                             IsDlc = false,
                             PublisherId = 3,
                             ReleaseDate = new DateOnly(2022, 2, 25),
                             Title = "Elden Ring",
-                            UpdatedAt = new DateTime(2026, 5, 2, 12, 8, 0, 140, DateTimeKind.Utc).AddTicks(4533)
+                            UpdatedAt = new DateTime(2026, 5, 12, 14, 38, 17, 465, DateTimeKind.Utc).AddTicks(9147)
                         },
                         new
                         {
                             GameId = 4,
-                            CreatedAt = new DateTime(2026, 5, 2, 12, 8, 0, 140, DateTimeKind.Utc).AddTicks(4537),
+                            CreatedAt = new DateTime(2026, 5, 12, 14, 38, 17, 465, DateTimeKind.Utc).AddTicks(9150),
                             Description = "Roguelike action sequel from Supergiant Games",
                             DeveloperId = 4,
                             IsDlc = false,
                             PublisherId = 4,
                             ReleaseDate = new DateOnly(2024, 5, 6),
                             Title = "Hades II",
-                            UpdatedAt = new DateTime(2026, 5, 2, 12, 8, 0, 140, DateTimeKind.Utc).AddTicks(4538)
+                            UpdatedAt = new DateTime(2026, 5, 12, 14, 38, 17, 465, DateTimeKind.Utc).AddTicks(9150)
                         },
                         new
                         {
                             GameId = 5,
-                            CreatedAt = new DateTime(2026, 5, 2, 12, 8, 0, 140, DateTimeKind.Utc).AddTicks(4541),
+                            CreatedAt = new DateTime(2026, 5, 12, 14, 38, 17, 465, DateTimeKind.Utc).AddTicks(9153),
                             Description = "Competitive tactical FPS",
                             DeveloperId = 5,
                             IsDlc = false,
                             PublisherId = 5,
                             ReleaseDate = new DateOnly(2023, 9, 27),
                             Title = "Counter-Strike 2",
-                            UpdatedAt = new DateTime(2026, 5, 2, 12, 8, 0, 140, DateTimeKind.Utc).AddTicks(4542)
+                            UpdatedAt = new DateTime(2026, 5, 12, 14, 38, 17, 465, DateTimeKind.Utc).AddTicks(9154)
                         },
                         new
                         {
                             GameId = 6,
-                            CreatedAt = new DateTime(2026, 5, 2, 12, 8, 0, 140, DateTimeKind.Utc).AddTicks(4545),
+                            CreatedAt = new DateTime(2026, 5, 12, 14, 38, 17, 465, DateTimeKind.Utc).AddTicks(9157),
                             Description = "Story-driven open world RPG",
                             DeveloperId = 2,
                             IsDlc = false,
                             PublisherId = 2,
                             ReleaseDate = new DateOnly(2015, 5, 19),
                             Title = "The Witcher 3: Wild Hunt",
-                            UpdatedAt = new DateTime(2026, 5, 2, 12, 8, 0, 140, DateTimeKind.Utc).AddTicks(4546)
+                            UpdatedAt = new DateTime(2026, 5, 12, 14, 38, 17, 465, DateTimeKind.Utc).AddTicks(9157)
                         });
                 });
 
@@ -420,9 +416,6 @@ namespace GameDB.Infrastructure.Migrations
                     b.Property<int>("GameId")
                         .HasColumnType("integer");
 
-                    b.Property<bool>("IsFree")
-                        .HasColumnType("boolean");
-
                     b.Property<DateTime?>("PriceSyncedAt")
                         .HasColumnType("timestamp with time zone");
 
@@ -453,7 +446,6 @@ namespace GameDB.Infrastructure.Migrations
                             CurrentPrice = 59.99m,
                             ExternalId = "1086940",
                             GameId = 1,
-                            IsFree = false,
                             ShopId = 1
                         },
                         new
@@ -464,7 +456,6 @@ namespace GameDB.Infrastructure.Migrations
                             CurrentPrice = 59.99m,
                             ExternalId = "1086940",
                             GameId = 1,
-                            IsFree = false,
                             ShopId = 2
                         },
                         new
@@ -475,7 +466,6 @@ namespace GameDB.Infrastructure.Migrations
                             CurrentPrice = 29.99m,
                             ExternalId = "1091500",
                             GameId = 2,
-                            IsFree = false,
                             ShopId = 1
                         },
                         new
@@ -486,7 +476,6 @@ namespace GameDB.Infrastructure.Migrations
                             CurrentPrice = 29.99m,
                             ExternalId = "1423049",
                             GameId = 2,
-                            IsFree = false,
                             ShopId = 2
                         },
                         new
@@ -497,7 +486,6 @@ namespace GameDB.Infrastructure.Migrations
                             CurrentPrice = 59.99m,
                             ExternalId = "1245620",
                             GameId = 3,
-                            IsFree = false,
                             ShopId = 1
                         },
                         new
@@ -508,7 +496,6 @@ namespace GameDB.Infrastructure.Migrations
                             CurrentPrice = 29.99m,
                             ExternalId = "1145350",
                             GameId = 4,
-                            IsFree = false,
                             ShopId = 1
                         },
                         new
@@ -519,7 +506,6 @@ namespace GameDB.Infrastructure.Migrations
                             CurrentPrice = 0.00m,
                             ExternalId = "730",
                             GameId = 5,
-                            IsFree = false,
                             ShopId = 1
                         },
                         new
@@ -530,7 +516,6 @@ namespace GameDB.Infrastructure.Migrations
                             CurrentPrice = 9.99m,
                             ExternalId = "292030",
                             GameId = 6,
-                            IsFree = false,
                             ShopId = 1
                         },
                         new
@@ -541,7 +526,6 @@ namespace GameDB.Infrastructure.Migrations
                             CurrentPrice = 9.99m,
                             ExternalId = "1495134320",
                             GameId = 6,
-                            IsFree = false,
                             ShopId = 2
                         });
                 });
@@ -585,6 +569,13 @@ namespace GameDB.Infrastructure.Migrations
                             ApiBaseUrl = "https://api.gog.com",
                             BaseUrl = "https://www.gog.com",
                             Name = "GOG"
+                        },
+                        new
+                        {
+                            ShopId = 3,
+                            ApiBaseUrl = "https://store.epicgames.com/graphql",
+                            BaseUrl = "https://store.epicgames.com",
+                            Name = "Epic Games Store"
                         });
                 });
 
@@ -1008,6 +999,15 @@ namespace GameDB.Infrastructure.Migrations
                     b.Property<string>("Developer")
                         .HasColumnType("text");
 
+                    b.Property<short?>("EgsDiscount")
+                        .HasColumnType("smallint");
+
+                    b.Property<string>("EgsId")
+                        .HasColumnType("text");
+
+                    b.Property<decimal?>("EgsPrice")
+                        .HasColumnType("numeric");
+
                     b.Property<int?>("GameId")
                         .HasColumnType("integer");
 
@@ -1067,7 +1067,7 @@ namespace GameDB.Infrastructure.Migrations
 
                     b.HasIndex("NormalizedTitle");
 
-                    b.HasIndex("IgdbId", "SteamAppId", "GogId");
+                    b.HasIndex("IgdbId", "SteamAppId", "GogId", "EgsId");
 
                     b.ToTable("StagingGame", (string)null);
                 });
@@ -1185,21 +1185,41 @@ namespace GameDB.Infrastructure.Migrations
                     b.Property<DateTime>("AddedAt")
                         .HasColumnType("timestamp with time zone");
 
+                    b.Property<int?>("SourceShopId")
+                        .HasColumnType("integer");
+
                     b.HasKey("UserId", "GameId");
 
                     b.HasIndex("GameId");
+
+                    b.HasIndex("SourceShopId");
 
                     b.HasIndex("UserId", "AddedAt");
 
                     b.ToTable("Wishlist", (string)null);
                 });
 
-            modelBuilder.Entity("GameDB.Core.Models.WishlistSource", b =>
+            modelBuilder.Entity("GameDB.Core.Models.WishlistImport", b =>
                 {
-                    b.Property<int>("UserId")
+                    b.Property<int>("ImportId")
+                        .ValueGeneratedOnAdd()
                         .HasColumnType("integer");
 
-                    b.Property<int>("GameId")
+                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<int>("ImportId"));
+
+                    b.Property<DateTime?>("CompletedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<int>("ErrorCount")
+                        .HasColumnType("integer");
+
+                    b.Property<string>("ErrorMessage")
+                        .HasColumnType("text");
+
+                    b.Property<int>("ImportedCount")
+                        .HasColumnType("integer");
+
+                    b.Property<int>("ItemsCount")
                         .HasColumnType("integer");
 
                     b.Property<int>("ShopId")
@@ -1211,9 +1231,14 @@ namespace GameDB.Infrastructure.Migrations
                     b.Property<DateTime>("StartedAt")
                         .HasColumnType("timestamp with time zone");
 
-                    b.HasKey("UserId", "GameId", "ShopId");
+                    b.Property<string>("Status")
+                        .IsRequired()
+                        .HasColumnType("text");
 
-                    b.HasIndex("GameId");
+                    b.Property<int>("UserId")
+                        .HasColumnType("integer");
+
+                    b.HasKey("ImportId");
 
                     b.HasIndex("ShopId");
 
@@ -1417,6 +1442,11 @@ namespace GameDB.Infrastructure.Migrations
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired();
 
+                    b.HasOne("GameDB.Core.Models.GameShop", "SourceShop")
+                        .WithMany()
+                        .HasForeignKey("SourceShopId")
+                        .OnDelete(DeleteBehavior.SetNull);
+
                     b.HasOne("GameDB.Core.Models.User", "User")
                         .WithMany("Wishlists")
                         .HasForeignKey("UserId")
@@ -1425,21 +1455,17 @@ namespace GameDB.Infrastructure.Migrations
 
                     b.Navigation("Game");
 
+                    b.Navigation("SourceShop");
+
                     b.Navigation("User");
                 });
 
-            modelBuilder.Entity("GameDB.Core.Models.WishlistSource", b =>
+            modelBuilder.Entity("GameDB.Core.Models.WishlistImport", b =>
                 {
-                    b.HasOne("GameDB.Core.Models.Game", "Game")
-                        .WithMany()
-                        .HasForeignKey("GameId")
-                        .OnDelete(DeleteBehavior.Cascade)
-                        .IsRequired();
-
                     b.HasOne("GameDB.Core.Models.GameShop", "Shop")
                         .WithMany()
                         .HasForeignKey("ShopId")
-                        .OnDelete(DeleteBehavior.Cascade)
+                        .OnDelete(DeleteBehavior.Restrict)
                         .IsRequired();
 
                     b.HasOne("GameDB.Core.Models.User", "User")
@@ -1447,14 +1473,6 @@ namespace GameDB.Infrastructure.Migrations
                         .HasForeignKey("UserId")
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired();
-
-                    b.HasOne("GameDB.Core.Models.Wishlist", null)
-                        .WithMany("Sources")
-                        .HasForeignKey("UserId", "GameId")
-                        .OnDelete(DeleteBehavior.Cascade)
-                        .IsRequired();
-
-                    b.Navigation("Game");
 
                     b.Navigation("Shop");
 
@@ -1526,11 +1544,6 @@ namespace GameDB.Infrastructure.Migrations
                     b.Navigation("ShopProfiles");
 
                     b.Navigation("Wishlists");
-                });
-
-            modelBuilder.Entity("GameDB.Core.Models.Wishlist", b =>
-                {
-                    b.Navigation("Sources");
                 });
 #pragma warning restore 612, 618
         }
