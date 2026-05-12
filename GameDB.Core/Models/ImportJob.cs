@@ -37,9 +37,15 @@ public class ImportJob
     // Totals
     public int TotalGamesCreated { get; set; }
     public int TotalOffersCreated { get; set; }
+    public int TotalOffersUpdated { get; set; }
+    public int SteamOffersUpdated { get; set; }
+    public int GogOffersUpdated { get; set; }
+    public int EgsOffersUpdated { get; set; }
     public int ErrorCount { get; set; }
     
     public DateTime StartedAt { get; set; }
     public DateTime? CompletedAt { get; set; }
     public string? ErrorMessage { get; set; }
+
+    public ICollection<ImportJobLog> Logs { get; set; } = new List<ImportJobLog>();
 }

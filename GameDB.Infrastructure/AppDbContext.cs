@@ -26,6 +26,8 @@ public class AppDbContext : DbContext
     public DbSet<GuestSession> GuestSessions => Set<GuestSession>();
     public DbSet<Notification> Notifications => Set<Notification>();
     public DbSet<ImportJob> ImportJobs => Set<ImportJob>();
+    public DbSet<ImportJobLog> ImportJobLogs => Set<ImportJobLog>();
+    public DbSet<AuditLog> AuditLogs => Set<AuditLog>();
     public DbSet<RawGameData> RawGameData => Set<RawGameData>();
     public DbSet<StagingGame> StagingGames => Set<StagingGame>();
     public DbSet<WishlistImport> WishlistImports => Set<WishlistImport>();
@@ -50,6 +52,8 @@ public class AppDbContext : DbContext
         mb.Entity<GuestSession>().ToTable("GuestSession");
         mb.Entity<Notification>().ToTable("Notification");
         mb.Entity<ImportJob>().ToTable("ImportJob");
+        mb.Entity<ImportJobLog>().ToTable("ImportJobLog");
+        mb.Entity<AuditLog>().ToTable("AuditLog");
         mb.Entity<RawGameData>().ToTable("RawGameData");
         mb.Entity<StagingGame>().ToTable("StagingGame");
         mb.Entity<WishlistImport>().ToTable("WishlistImport");
@@ -91,6 +95,12 @@ public class AppDbContext : DbContext
             .HasDatabaseName("IX_GuestSession_DeviceHash");
         mb.Entity<Notification>()
             .HasIndex(n => new { n.UserId, n.IsRead, n.CreatedAt });
+        mb.Entity<ImportJobLog>()
+            .HasIndex(l => new { l.ImportJobId, l.Timestamp });
+        mb.Entity<AuditLog>()
+            .HasIndex(a => new { a.Timestamp, a.ActionType });
+        mb.Entity<AuditLog>()
+            .HasIndex(a => a.UserId);
 
         // PriceHistory index + explicit FK
         mb.Entity<PriceHistory>()
@@ -118,6 +128,11 @@ public class AppDbContext : DbContext
             .HasOne(n => n.User)
             .WithMany(u => u.Notifications)
             .HasForeignKey(n => n.UserId)
+            .OnDelete(DeleteBehavior.Cascade);
+        mb.Entity<ImportJobLog>()
+            .HasOne(l => l.ImportJob)
+            .WithMany(j => j.Logs)
+            .HasForeignKey(l => l.ImportJobId)
             .OnDelete(DeleteBehavior.Cascade);
 
         // WishlistImport FK configuration

@@ -7,6 +7,8 @@ using GameDB.Core.Models;
 using GameDB.Infrastructure.Caching;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
+using Polly;
+using Polly.CircuitBreaker;
 using System.Collections.Concurrent;
 using System.Text.Json;
 using System.Text.RegularExpressions;
@@ -21,6 +23,7 @@ public class GameImportService
     private readonly ReferenceDataCache _cache;
     private readonly ILogger<GameImportService> _logger;
     private readonly ImportSettings _settings;
+    private readonly ResiliencePipeline _igdbPipeline;
 
     public GameImportService(
         AppDbContext db,
@@ -36,18 +39,29 @@ public class GameImportService
         _cache = cache;
         _logger = logger;
         _settings = settings;
+        _igdbPipeline = BuildExternalApiPipeline();
     }
 
     public async Task RunImportAsync(ImportJob job, CancellationToken ct)
     {
-        await RunImportAsync(job, new ImportPipelineOptions(), ct);
+        await RunImportAsync(job, new ImportPipelineOptions(), Array.Empty<IDataProvider>(), ct);
     }
 
     public async Task RunImportAsync(ImportJob job, ImportPipelineOptions options, CancellationToken ct)
     {
+        await RunImportAsync(job, options, Array.Empty<IDataProvider>(), ct);
+    }
+
+    public async Task RunImportAsync(
+        ImportJob job,
+        ImportPipelineOptions options,
+        IEnumerable<IDataProvider> dataProviders,
+        CancellationToken ct)
+    {
         job.Status = ImportJobStatus.Running;
         job.CurrentPhase = "collecting";
         await _db.SaveChangesAsync(ct);
+        await LogJobEventAsync(job, ImportJobLogLevel.Info, "collecting", "Import pipeline started", options, ct);
 
         var games = await CollectFromIgdbAsync(job, options, ct);
         job.SteamTotal = games.Count;
@@ -56,6 +70,7 @@ public class GameImportService
 
         job.CurrentPhase = "enriching_prices";
         await _db.SaveChangesAsync(ct);
+        await LogJobEventAsync(job, ImportJobLogLevel.Info, "enriching_prices", "Starting source providers", null, ct);
 
         // Skip Steam price enrichment - prices will be synced separately via PriceSyncWorker
         _logger.LogInformation("Skipping Steam price enrichment - will be synced separately");
@@ -65,13 +80,51 @@ public class GameImportService
 
         job.CurrentPhase = "importing";
         await _db.SaveChangesAsync(ct);
+        await LogJobEventAsync(job, ImportJobLogLevel.Info, "importing", $"Importing {enriched.Count} games", null, ct);
 
         await ImportToDatabaseAsync(enriched, job, options, ct);
+
+        if (ct.IsCancellationRequested) return;
+        job.CurrentPhase = "provider_sync";
+        await _db.SaveChangesAsync(ct);
+
+        foreach (var provider in dataProviders)
+        {
+            try
+            {
+                var updated = await provider.UpdateOffersAsync(job, ct);
+                job.TotalOffersUpdated += updated;
+            }
+            catch (Exception ex)
+            {
+                job.ErrorCount++;
+                await LogJobEventAsync(
+                    job,
+                    ImportJobLogLevel.Error,
+                    "provider_sync",
+                    $"Provider '{provider.Name}' failed: {ex.Message}",
+                    new { provider.Name, Exception = ex.GetType().Name },
+                    ct);
+            }
+        }
 
         job.Status = ImportJobStatus.Completed;
         job.CompletedAt = DateTime.UtcNow;
         job.CurrentPhase = "completed";
         await _db.SaveChangesAsync(ct);
+        await LogJobEventAsync(
+            job,
+            ImportJobLogLevel.Info,
+            "completed",
+            "Import completed successfully",
+            new
+            {
+                job.TotalGamesCreated,
+                job.TotalOffersCreated,
+                job.TotalOffersUpdated,
+                job.ErrorCount
+            },
+            ct);
 
         _logger.LogInformation(
             "Import completed: {Games} games, {Offers} offers, {Errors} errors",
@@ -95,11 +148,12 @@ public class GameImportService
             : null;
         var excludeIgdbIds = options.OverwriteExisting ? null : existingIgdbIds;
 
-        var igdbGames = await _igdb.GetPcGamesAsync(
-            excludeIgdbIds: excludeIgdbIds,
-            includeIgdbIds: includeIgdbIds,
-            maxGames: options.Limit,
-            ct: ct);
+        var igdbGames = await _igdbPipeline.ExecuteAsync(async token =>
+            await _igdb.GetPcGamesAsync(
+                excludeIgdbIds: excludeIgdbIds,
+                includeIgdbIds: includeIgdbIds,
+                maxGames: options.Limit,
+                ct: token), ct);
 
         var imports = igdbGames.Select(g => new GameImport
         {
@@ -126,6 +180,13 @@ public class GameImportService
         if (skippedCount > 0)
         {
             _logger.LogInformation("IGDB: Skipped {Count} games with no store offers (Steam/GOG/EGS)", skippedCount);
+            await LogJobEventAsync(
+                job,
+                ImportJobLogLevel.Warning,
+                "collecting",
+                $"Skipped {skippedCount} games without offers",
+                new { skippedCount },
+                ct);
         }
 
         _logger.LogInformation("IGDB: {Count} games collected for import", gamesWithOffers.Count);
@@ -404,7 +465,17 @@ public class GameImportService
                 }
             }
             catch (Exception ex)
-            { _logger.LogWarning(ex, "Failed: {Title}", import.Title); job.ErrorCount++; }
+            {
+                _logger.LogWarning(ex, "Failed: {Title}", import.Title);
+                job.ErrorCount++;
+                await LogJobEventAsync(
+                    job,
+                    ImportJobLogLevel.Warning,
+                    "importing",
+                    $"Failed to process game '{import.Title}'",
+                    new { import.Title, Exception = ex.Message },
+                    ct);
+            }
         }
 
         if (newGames.Count > 0)
@@ -474,8 +545,27 @@ public class GameImportService
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "Failed to insert GameGenre records. Count={Count}", distinctGenres.Count);
-                throw;
+                _logger.LogError(ex, "Failed bulk insert for GameGenre records. Falling back to per-record insert.");
+                foreach (var genre in distinctGenres)
+                {
+                    try
+                    {
+                        _db.GameGenres.Add(genre);
+                        await _db.SaveChangesAsync(ct);
+                    }
+                    catch (Exception itemEx)
+                    {
+                        _db.Entry(genre).State = EntityState.Detached;
+                        job.ErrorCount++;
+                        await LogJobEventAsync(
+                            job,
+                            ImportJobLogLevel.Warning,
+                            "importing",
+                            $"Skipped GameGenre link GameId={genre.GameId}, GenreId={genre.GenreId}",
+                            new { Exception = itemEx.Message },
+                            ct);
+                    }
+                }
             }
         }
         if (newOffers.Count      > 0)
@@ -492,10 +582,79 @@ public class GameImportService
                     newOffers.Count - distinctOffers.Count);
             }
             
-            await _db.BulkInsertAsync(distinctOffers, cancellationToken: ct);
-            job.TotalOffersCreated = distinctOffers.Count;
+            try
+            {
+                await _db.BulkInsertAsync(distinctOffers, cancellationToken: ct);
+                job.TotalOffersCreated = distinctOffers.Count;
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Failed bulk insert for offers. Falling back to per-offer insert.");
+                foreach (var offer in distinctOffers)
+                {
+                    try
+                    {
+                        _db.GameOffers.Add(offer);
+                        await _db.SaveChangesAsync(ct);
+                        job.TotalOffersCreated++;
+                    }
+                    catch (Exception itemEx)
+                    {
+                        _db.Entry(offer).State = EntityState.Detached;
+                        job.ErrorCount++;
+                        await LogJobEventAsync(
+                            job,
+                            ImportJobLogLevel.Warning,
+                            "importing",
+                            $"Skipped offer for GameId={offer.GameId}, ShopId={offer.ShopId}",
+                            new { Exception = itemEx.Message, offer.ExternalId },
+                            ct);
+                    }
+                }
+            }
         }
-        if (offersToUpdate.Count > 0) await _db.BulkUpdateAsync(offersToUpdate, cancellationToken: ct);
+        if (offersToUpdate.Count > 0)
+        {
+            try
+            {
+                await _db.BulkUpdateAsync(offersToUpdate, cancellationToken: ct);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Failed bulk update for offers. Falling back to per-offer update.");
+                foreach (var offer in offersToUpdate)
+                {
+                    try
+                    {
+                        _db.GameOffers.Update(offer);
+                        await _db.SaveChangesAsync(ct);
+                    }
+                    catch (Exception itemEx)
+                    {
+                        _db.Entry(offer).State = EntityState.Detached;
+                        job.ErrorCount++;
+                        await LogJobEventAsync(
+                            job,
+                            ImportJobLogLevel.Warning,
+                            "importing",
+                            $"Skipped offer update GameOfferId={offer.GameOfferId}",
+                            new { Exception = itemEx.Message, offer.ExternalId },
+                            ct);
+                    }
+                }
+            }
+        }
+        if (offersToUpdate.Count > 0)
+        {
+            var distinctUpdatedOffers = offersToUpdate
+                .GroupBy(o => o.GameOfferId)
+                .Select(g => g.First())
+                .ToList();
+            job.TotalOffersUpdated += distinctUpdatedOffers.Count;
+            job.SteamOffersUpdated += distinctUpdatedOffers.Count(o => o.ShopId == ShopConstants.Steam);
+            job.GogOffersUpdated += distinctUpdatedOffers.Count(o => o.ShopId == ShopConstants.Gog);
+            job.EgsOffersUpdated += distinctUpdatedOffers.Count(o => o.ShopId == ShopConstants.EpicGames);
+        }
 
         _cache.Clear();
     }
@@ -553,5 +712,46 @@ public class GameImportService
             .Replace("™", "").Replace("®", "").Replace("©", "")
             .Where(c => char.IsLetterOrDigit(c) || c == ' ').ToArray())
             .Trim().Replace("  ", " ");
+    }
+
+    private async Task LogJobEventAsync(
+        ImportJob job,
+        ImportJobLogLevel level,
+        string phase,
+        string message,
+        object? data,
+        CancellationToken ct)
+    {
+        _db.ImportJobLogs.Add(new ImportJobLog
+        {
+            ImportJobId = job.ImportJobId,
+            Timestamp = DateTime.UtcNow,
+            Level = level,
+            Phase = phase,
+            Message = message,
+            Data = data == null ? null : JsonSerializer.Serialize(data)
+        });
+        await _db.SaveChangesAsync(ct);
+    }
+
+    private static ResiliencePipeline BuildExternalApiPipeline()
+    {
+        return new ResiliencePipelineBuilder()
+            .AddRetry(new Polly.Retry.RetryStrategyOptions
+            {
+                MaxRetryAttempts = 3,
+                Delay = TimeSpan.FromSeconds(2),
+                BackoffType = DelayBackoffType.Exponential,
+                ShouldHandle = new PredicateBuilder().Handle<Exception>()
+            })
+            .AddCircuitBreaker(new CircuitBreakerStrategyOptions
+            {
+                FailureRatio = 0.5,
+                SamplingDuration = TimeSpan.FromSeconds(30),
+                MinimumThroughput = 5,
+                BreakDuration = TimeSpan.FromSeconds(20),
+                ShouldHandle = new PredicateBuilder().Handle<Exception>()
+            })
+            .Build();
     }
 }

@@ -57,6 +57,7 @@ public class GameImportWorker : BackgroundService
         using var scope = _serviceProvider.CreateScope();
         var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
         var importService = scope.ServiceProvider.GetRequiredService<GameImportService>();
+        var dataProviders = scope.ServiceProvider.GetServices<GameDB.Core.Interfaces.IDataProvider>();
 
         var pipelineId = workItem.PipelineId;
         var job = await db.ImportJobs.FindAsync(pipelineId, ct);
@@ -72,7 +73,7 @@ public class GameImportWorker : BackgroundService
         try
         {
             // Run unified import
-            await importService.RunImportAsync(job, workItem.Options, ct);
+            await importService.RunImportAsync(job, workItem.Options, dataProviders, ct);
             
             _logger.LogInformation(
                 "✅ Pipeline {PipelineId} completed in {Duration:mm\\:ss}. " +

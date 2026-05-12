@@ -1,6 +1,9 @@
 import { useState, useEffect, useRef } from 'react';
-import { Card, Button, Descriptions, message, Progress, Form, InputNumber, Input, Switch } from 'antd';
-import { SyncOutlined, ImportOutlined } from '@ant-design/icons';
+import {
+  Card, Button, Descriptions, message, Progress, Form, InputNumber, Input, Switch,
+  Table, Modal, Tag, Space
+} from 'antd';
+import { SyncOutlined, ImportOutlined, EyeOutlined } from '@ant-design/icons';
 import { api } from '../../api';
 
 export default function SyncPage() {
@@ -8,6 +11,11 @@ export default function SyncPage() {
   const [gogResult, setGogResult] = useState(null);
   const [importResult, setImportResult] = useState(null);
   const [loading, setLoading] = useState(null);
+  const [jobs, setJobs] = useState([]);
+  const [jobsLoading, setJobsLoading] = useState(false);
+  const [jobDetails, setJobDetails] = useState(null);
+  const [jobLogs, setJobLogs] = useState([]);
+  const [isDetailsOpen, setIsDetailsOpen] = useState(false);
   const [importOptions, setImportOptions] = useState({
     limit: null,
     igdbGameIdsText: '',
@@ -15,9 +23,38 @@ export default function SyncPage() {
   });
   const pollRef = useRef(null);
 
-  useEffect(() => () => {
-    if (pollRef.current) clearInterval(pollRef.current);
+  const loadJobs = async () => {
+    setJobsLoading(true);
+    try {
+      const res = await api.getImportJobs({ page: 1, pageSize: 20 });
+      setJobs(res.jobs || []);
+    } catch (e) {
+      message.error(e.message);
+    } finally {
+      setJobsLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    loadJobs();
+    return () => {
+      if (pollRef.current) clearInterval(pollRef.current);
+    };
   }, []);
+
+  const openDetails = async (pipelineId) => {
+    try {
+      const [details, logsRes] = await Promise.all([
+        api.getImportJobDetails(pipelineId),
+        api.getImportJobLogs(pipelineId, { take: 200 }),
+      ]);
+      setJobDetails(details);
+      setJobLogs(logsRes.logs || []);
+      setIsDetailsOpen(true);
+    } catch (e) {
+      message.error(e.message);
+    }
+  };
 
   const syncSteam = async () => {
     setLoading('steam');
@@ -78,6 +115,7 @@ export default function SyncPage() {
               pollRef.current = null;
             }
             setLoading(null);
+            await loadJobs();
             if (s.status === 'completed') {
               message.success(`Done: ${s.importedGames} imported, ${s.errorCount} errors`);
             } else {
@@ -134,6 +172,32 @@ export default function SyncPage() {
     </Card>
   );
 
+  const columns = [
+    { title: 'ID', dataIndex: 'importJobId', key: 'importJobId', width: 90 },
+    {
+      title: 'Status',
+      dataIndex: 'status',
+      key: 'status',
+      render: (status) => <Tag color={status === 'completed' ? 'green' : status === 'failed' ? 'red' : 'blue'}>{status}</Tag>
+    },
+    { title: 'Phase', dataIndex: 'currentPhase', key: 'currentPhase' },
+    { title: 'Games', dataIndex: 'totalGames', key: 'totalGames', width: 90 },
+    { title: 'Created', dataIndex: 'totalGamesCreated', key: 'totalGamesCreated', width: 90 },
+    { title: 'Offers+', dataIndex: 'totalOffersCreated', key: 'totalOffersCreated', width: 90 },
+    { title: 'Offers~', dataIndex: 'totalOffersUpdated', key: 'totalOffersUpdated', width: 90 },
+    { title: 'Errors', dataIndex: 'errorCount', key: 'errorCount', width: 90 },
+    {
+      title: 'Actions',
+      key: 'actions',
+      width: 110,
+      render: (_, row) => (
+        <Button icon={<EyeOutlined />} onClick={() => openDetails(row.importJobId)}>
+          Details
+        </Button>
+      )
+    }
+  ];
+
   return (
     <div>
       <h2>Price Sync</h2>
@@ -178,6 +242,68 @@ export default function SyncPage() {
         name="import"
         icon={<ImportOutlined />}
       />
+
+      <Card
+        title="Import Jobs"
+        extra={<Button onClick={loadJobs} loading={jobsLoading}>Refresh</Button>}
+      >
+        <Table
+          rowKey="importJobId"
+          loading={jobsLoading}
+          columns={columns}
+          dataSource={jobs}
+          pagination={false}
+          size="small"
+        />
+      </Card>
+
+      <Modal
+        title={jobDetails ? `Import Job #${jobDetails.importJobId}` : 'Import Job Details'}
+        width={1000}
+        open={isDetailsOpen}
+        footer={null}
+        onCancel={() => setIsDetailsOpen(false)}
+      >
+        {jobDetails && (
+          <>
+            <Descriptions bordered size="small" column={2} style={{ marginBottom: 16 }}>
+              <Descriptions.Item label="Status">{jobDetails.status}</Descriptions.Item>
+              <Descriptions.Item label="Phase">{jobDetails.currentPhase}</Descriptions.Item>
+              <Descriptions.Item label="Total Games">{jobDetails.steamTotal}</Descriptions.Item>
+              <Descriptions.Item label="Processed">{jobDetails.steamProcessed}</Descriptions.Item>
+              <Descriptions.Item label="Games Created">{jobDetails.totalGamesCreated}</Descriptions.Item>
+              <Descriptions.Item label="Offers Created">{jobDetails.totalOffersCreated}</Descriptions.Item>
+              <Descriptions.Item label="Offers Updated">{jobDetails.totalOffersUpdated}</Descriptions.Item>
+              <Descriptions.Item label="Errors">{jobDetails.errorCount}</Descriptions.Item>
+              <Descriptions.Item label="Steam Offers Updated">{jobDetails.steamOffersUpdated}</Descriptions.Item>
+              <Descriptions.Item label="GOG Offers Updated">{jobDetails.gogOffersUpdated}</Descriptions.Item>
+              <Descriptions.Item label="EGS Offers Updated">{jobDetails.egsOffersUpdated}</Descriptions.Item>
+              <Descriptions.Item label="Started">{new Date(jobDetails.startedAt).toLocaleString()}</Descriptions.Item>
+            </Descriptions>
+
+            <Card title="Import Logs" size="small">
+              <Space direction="vertical" style={{ width: '100%' }}>
+                {jobLogs.map((log) => (
+                  <Card key={log.importJobLogId} size="small">
+                    <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                      <Space>
+                        <Tag color={log.level === 'Error' ? 'red' : log.level === 'Warning' ? 'orange' : 'blue'}>{log.level}</Tag>
+                        <Tag>{log.phase}</Tag>
+                      </Space>
+                      <span style={{ color: '#888' }}>{new Date(log.timestamp).toLocaleString()}</span>
+                    </div>
+                    <div style={{ marginTop: 8 }}>{log.message}</div>
+                    {log.data && (
+                      <pre style={{ marginTop: 8, whiteSpace: 'pre-wrap' }}>{log.data}</pre>
+                    )}
+                  </Card>
+                ))}
+                {jobLogs.length === 0 && <div>No logs available</div>}
+              </Space>
+            </Card>
+          </>
+        )}
+      </Modal>
     </div>
   );
 }

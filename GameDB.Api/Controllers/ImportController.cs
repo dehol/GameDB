@@ -5,6 +5,7 @@ using GameDB.Infrastructure;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
+using System.Security.Claims;
 
 namespace GameDB.Api.Controllers;
 
@@ -19,11 +20,13 @@ public class ImportController : ControllerBase
 {
     private readonly IPipelineService _pipelineService;
     private readonly AppDbContext _db;
+    private readonly IAuditService _auditService;
 
-    public ImportController(IPipelineService pipelineService, AppDbContext db)
+    public ImportController(IPipelineService pipelineService, AppDbContext db, IAuditService auditService)
     {
         _pipelineService = pipelineService;
         _db = db;
+        _auditService = auditService;
     }
 
     /// <summary>
@@ -47,6 +50,16 @@ public class ImportController : ControllerBase
                     OverwriteExisting: request.OverwriteExisting);
 
             var pipelineId = await _pipelineService.StartImportPipelineAsync(options);
+            var userId = int.TryParse(User.FindFirstValue(ClaimTypes.NameIdentifier), out var parsedUserId)
+                ? (int?)parsedUserId
+                : null;
+            await _auditService.LogActionAsync(
+                userId,
+                "Import.Start",
+                pipelineId.ToString(),
+                oldValue: null,
+                newValue: options,
+                ipAddress: HttpContext.Connection.RemoteIpAddress?.ToString());
             
             return Ok(new
             {
@@ -169,6 +182,10 @@ public class ImportController : ControllerBase
                 processedGames = j.SteamProcessed,
                 j.TotalGamesCreated,
                 j.TotalOffersCreated,
+                j.TotalOffersUpdated,
+                j.SteamOffersUpdated,
+                j.GogOffersUpdated,
+                j.EgsOffersUpdated,
                 j.ErrorCount,
                 j.StartedAt,
                 j.CompletedAt,
@@ -187,6 +204,83 @@ public class ImportController : ControllerBase
             totalPages = (int)Math.Ceiling((double)total / pageSize),
             jobs
         });
+    }
+
+    [HttpGet("jobs/{pipelineId}")]
+    [ProducesResponseType(StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
+    public async Task<IActionResult> GetJobDetails(int pipelineId)
+    {
+        var job = await _db.ImportJobs
+            .AsNoTracking()
+            .Where(j => j.ImportJobId == pipelineId)
+            .Select(j => new
+            {
+                j.ImportJobId,
+                Status = j.Status.ToString().ToLowerInvariant(),
+                j.CurrentPhase,
+                j.IsSteamCatalogImport,
+                j.SteamTotal,
+                j.SteamProcessed,
+                j.SteamImported,
+                j.SteamUpdated,
+                j.GogTotal,
+                j.GogProcessed,
+                j.GogImported,
+                j.EgsTotal,
+                j.EgsProcessed,
+                j.EgsImported,
+                j.TotalGamesCreated,
+                j.TotalOffersCreated,
+                j.TotalOffersUpdated,
+                j.SteamOffersUpdated,
+                j.GogOffersUpdated,
+                j.EgsOffersUpdated,
+                j.ErrorCount,
+                j.StartedAt,
+                j.CompletedAt,
+                j.ErrorMessage
+            })
+            .FirstOrDefaultAsync();
+
+        if (job == null)
+            return NotFound(new { error = $"Pipeline {pipelineId} not found" });
+
+        return Ok(job);
+    }
+
+    [HttpGet("jobs/{pipelineId}/logs")]
+    [ProducesResponseType(StatusCodes.Status200OK)]
+    public async Task<IActionResult> GetJobLogs(
+        int pipelineId,
+        [FromQuery] string? level = null,
+        [FromQuery] int take = 200)
+    {
+        take = Math.Clamp(take, 1, 1000);
+        var query = _db.ImportJobLogs.AsNoTracking().Where(l => l.ImportJobId == pipelineId);
+
+        if (!string.IsNullOrWhiteSpace(level) &&
+            Enum.TryParse<ImportJobLogLevel>(level, true, out var parsedLevel))
+        {
+            query = query.Where(l => l.Level == parsedLevel);
+        }
+
+        var logs = await query
+            .OrderByDescending(l => l.Timestamp)
+            .Take(take)
+            .Select(l => new
+            {
+                l.ImportJobLogId,
+                l.ImportJobId,
+                l.Timestamp,
+                level = l.Level.ToString(),
+                l.Phase,
+                l.Message,
+                l.Data
+            })
+            .ToListAsync();
+
+        return Ok(new { pipelineId, count = logs.Count, logs });
     }
 
     /// <summary>

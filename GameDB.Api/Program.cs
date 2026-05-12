@@ -13,9 +13,13 @@ using System.Text.Json.Serialization;
 
 var builder = WebApplication.CreateBuilder(args);
 
+builder.Services.AddHttpContextAccessor();
+builder.Services.AddScoped<AuditSaveChangesInterceptor>();
+
 // DB
-builder.Services.AddDbContext<AppDbContext>(opt =>
-    opt.UseNpgsql(builder.Configuration.GetConnectionString("Default")));
+builder.Services.AddDbContext<AppDbContext>((sp, opt) =>
+    opt.UseNpgsql(builder.Configuration.GetConnectionString("Default"))
+       .AddInterceptors(sp.GetRequiredService<AuditSaveChangesInterceptor>()));
 
 // Configuration
 builder.Services.Configure<IgdbSettings>(
@@ -42,6 +46,10 @@ builder.Services.AddScoped<LibraryService>();
 builder.Services.AddScoped<GameImportService>();
 builder.Services.AddScoped<ReferenceDataCache>();
 builder.Services.AddScoped<IWishlistImportService, WishlistImportService>();
+builder.Services.AddScoped<IAuditService, AuditService>();
+builder.Services.AddScoped<IDataProvider, SteamDataProvider>();
+builder.Services.AddScoped<IDataProvider, GogDataProvider>();
+builder.Services.AddScoped<IDataProvider, EgsDataProvider>();
 
 // IGDB API Client
 builder.Services.AddHttpClient<IgdbApiService>(client =>
