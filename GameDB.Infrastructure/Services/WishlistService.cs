@@ -78,7 +78,8 @@ public class WishlistService
             cmd.Parameters.Add(p2);
             
             var result = await cmd.ExecuteScalarAsync();
-            var added = (bool)result;
+            if (result is not bool added)
+                throw new InvalidOperationException("fn_toggle_wishlist did not return a boolean value.");
             
             return added
                 ? (true, "Added to wishlist")

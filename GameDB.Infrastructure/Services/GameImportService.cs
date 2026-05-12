@@ -371,10 +371,11 @@ public class GameImportService
 
         var externalIds = games
             .SelectMany(g => g.Offers.Select(o => o.ExternalId))
+            .Where(id => !string.IsNullOrWhiteSpace(id))
             .Distinct().ToList();
 
         var existingOffers = await _db.GameOffers.AsNoTracking()
-            .Where(o => externalIds.Contains(o.ExternalId))
+            .Where(o => o.ExternalId != null && externalIds.Contains(o.ExternalId))
             .ToDictionaryAsync(o => $"{o.ShopId}:{o.ExternalId}", ct);
 
         var newGames       = new List<Game>();
