@@ -276,8 +276,9 @@ public class GameImportService
             existingGames.Count, existingGameGenreSet.Count);
 
         var externalIds = games
-            .SelectMany(g => g.Offers.Select(o => o.ExternalId))
-            .Where(id => !string.IsNullOrWhiteSpace(id))
+            .SelectMany(g => g.Offers
+                .Where(o => !string.IsNullOrWhiteSpace(o.ExternalId))
+                .Select(o => o.ExternalId!))
             .Distinct().ToList();
 
         var existingOffers = await _db.GameOffers.AsNoTracking()
