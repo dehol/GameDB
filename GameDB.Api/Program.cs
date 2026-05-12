@@ -45,6 +45,7 @@ builder.Services.AddScoped<NotificationService>();
 builder.Services.AddScoped<LibraryService>();
 builder.Services.AddScoped<GameImportService>();
 builder.Services.AddScoped<ReferenceDataCache>();
+builder.Services.AddScoped<IGameMatchingService, GameMatchingService>();
 builder.Services.AddScoped<ISteamApiService, SteamApiService>();
 builder.Services.AddScoped<IGogApiService, GogApiService>();
 builder.Services.AddScoped<IEpicGamesApiService, EpicGamesApiService>();
