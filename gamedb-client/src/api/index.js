@@ -111,6 +111,9 @@ export const api = {
   importLibrary: (shop) => request(`/library/import/${shop}`, { method: 'POST' }),
 
   // Admin: unified import pipeline
+  syncAll: () => request('/sync/sync', { method: 'POST' }),
+  syncSteam: () => request('/sync/steam', { method: 'POST' }),
+  syncGog: () => request('/sync/gog', { method: 'POST' }),
   startImportPipeline: (options = {}) => request('/import/start', { method: 'POST', body: JSON.stringify(options) }),
   getImportPipelineStatus: (pipelineId) => request(`/import/status/${pipelineId}`),
   getCurrentImportPipeline: () => request('/import/current'),

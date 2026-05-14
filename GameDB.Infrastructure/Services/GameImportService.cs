@@ -598,7 +598,7 @@ public class GameImportService
             job.TotalOffersUpdated += distinctUpdatedOffers.Count;
             job.SteamOffersUpdated += distinctUpdatedOffers.Count(o => o.ShopId == ShopConstants.Steam);
             job.GogOffersUpdated += distinctUpdatedOffers.Count(o => o.ShopId == ShopConstants.Gog);
-            job.EgsOffersUpdated += distinctUpdatedOffers.Count(o => o.ShopId == ShopConstants.EpicGames);
+            job.EgsOffersUpdated += distinctUpdatedOffers.Count(o => o.ShopId == ShopConstants.Egs);
         }
 
         _cache.Clear();

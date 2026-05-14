@@ -77,6 +77,16 @@ export default function SyncPage() {
     setLoading(null);
   };
 
+  const syncAll = async () => {
+    setLoading('all');
+    try {
+      const res = await api.syncAll();
+      setAllResult(res);
+      message.success('Sync completed');
+    } catch (e) { message.error(e.message); }
+    setLoading(null);
+  };
+
   const startUnifiedImport = async () => {
     setLoading('import');
     try {

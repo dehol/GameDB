@@ -224,7 +224,6 @@ namespace GameDB.Infrastructure.Migrations
                         new
                         {
                             GameId = 1,
-                            CreatedAt = new DateTime(2026, 4, 22, 15, 10, 0, 33, DateTimeKind.Utc).AddTicks(7756),
                             CreatedAt = new DateTime(2026, 5, 2, 12, 8, 0, 140, DateTimeKind.Utc).AddTicks(4520),
                             Description = "An epic RPG set in the D&D universe",
                             DeveloperId = 1,
