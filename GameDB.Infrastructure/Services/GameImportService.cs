@@ -178,7 +178,7 @@ public class GameImportService
         if (skippedWithoutRawg > 0)
         {
             _logger.LogWarning(
-                "Targeted import: {Count} games skipped because they have no IGDB/RawgId mapping",
+                "Targeted import: {Count} games skipped because they have no RawgId (used as IGDB ID)",
                 skippedWithoutRawg);
             job.ErrorCount += skippedWithoutRawg;
         }
@@ -604,8 +604,16 @@ public class GameImportService
         {
             var distinctOffers = newOffers
                 .GroupBy(o => new { o.GameId, o.ShopId })
-                .Select(g => g.First())
+                .Select(g => g
+                    .OrderByDescending(o => o.PriceSyncedAt ?? DateTime.MinValue)
+                    .First())
                 .ToList();
+
+            if (distinctOffers.Count < newOffers.Count)
+            {
+                _logger.LogWarning("Targeted import: removed {Count} duplicate offers (same GameId+ShopId)",
+                    newOffers.Count - distinctOffers.Count);
+            }
 
             await _db.BulkInsertAsync(distinctOffers, cancellationToken: ct);
             job.TotalOffersCreated = distinctOffers.Count;

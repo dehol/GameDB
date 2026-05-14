@@ -37,13 +37,17 @@ public class AdminController : ControllerBase
             query = query.Where(g => EF.Functions.ILike(g.Title, $"%{search}%"));
         }
 
-        var projectedQuery = query.Select(g => new
-        {
-            g.GameId,
-            g.Title,
-            g.ReleaseDate,
-            OffersCount = g.Offers.Count()
-        });
+        var projectedQuery = query.GroupJoin(
+            _db.GameOffers.AsNoTracking(),
+            game => game.GameId,
+            offer => offer.GameId,
+            (game, offers) => new
+            {
+                game.GameId,
+                game.Title,
+                game.ReleaseDate,
+                OffersCount = offers.Count()
+            });
 
         if (offersCount.HasValue)
         {

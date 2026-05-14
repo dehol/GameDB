@@ -36,6 +36,7 @@ export default function GamesManagementPage() {
 
   useEffect(() => {
     load({ page: 1 });
+    // Initial load only; subsequent reloads are triggered by explicit filter/pagination actions.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
