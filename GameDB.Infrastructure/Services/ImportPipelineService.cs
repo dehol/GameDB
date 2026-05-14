@@ -168,9 +168,21 @@ public class ImportPipelineService : IPipelineService
                 igdbGameIds = null;
         }
 
+        List<int>? gameIds = null;
+        if (options.GameIds is { Count: > 0 })
+        {
+            gameIds = options.GameIds
+                .Where(id => id > 0)
+                .Distinct()
+                .ToList();
+            if (gameIds.Count == 0)
+                gameIds = null;
+        }
+
         return new ImportPipelineOptions(
             Limit: limit,
             IgdbGameIds: igdbGameIds,
+            GameIds: gameIds,
             OverwriteExisting: options.OverwriteExisting);
     }
 }

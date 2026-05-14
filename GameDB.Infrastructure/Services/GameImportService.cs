@@ -46,27 +46,42 @@ public class GameImportService
     public async Task RunImportAsync(ImportJob job, ImportPipelineOptions options, CancellationToken ct)
     {
         job.Status = ImportJobStatus.Running;
-        job.CurrentPhase = "collecting";
+        job.CurrentPhase = options.GameIds is { Count: > 0 } ? "collecting_targeted" : "collecting";
         await _db.SaveChangesAsync(ct);
 
-        var games = await CollectFromIgdbAsync(job, options, ct);
-        job.SteamTotal = games.Count;
+        if (options.GameIds is { Count: > 0 })
+        {
+            var targetedOffers = await CollectTargetedOffersAsync(job, options, ct);
+            job.SteamTotal = options.GameIds.Count;
 
-        if (ct.IsCancellationRequested) return;
+            if (ct.IsCancellationRequested) return;
 
-        job.CurrentPhase = "enriching_prices";
-        await _db.SaveChangesAsync(ct);
+            job.CurrentPhase = "importing_targeted_offers";
+            await _db.SaveChangesAsync(ct);
 
-        // Skip Steam price enrichment - prices will be synced separately via PriceSyncWorker
-        _logger.LogInformation("Skipping Steam price enrichment - will be synced separately");
-        var enriched = games;
+            await ImportTargetedOffersAsync(targetedOffers, job, ct);
+        }
+        else
+        {
+            var games = await CollectFromIgdbAsync(job, options, ct);
+            job.SteamTotal = games.Count;
 
-        if (ct.IsCancellationRequested) return;
+            if (ct.IsCancellationRequested) return;
 
-        job.CurrentPhase = "importing";
-        await _db.SaveChangesAsync(ct);
+            job.CurrentPhase = "enriching_prices";
+            await _db.SaveChangesAsync(ct);
 
-        await ImportToDatabaseAsync(enriched, job, options, ct);
+            // Skip Steam price enrichment - prices will be synced separately via PriceSyncWorker
+            _logger.LogInformation("Skipping Steam price enrichment - will be synced separately");
+            var enriched = games;
+
+            if (ct.IsCancellationRequested) return;
+
+            job.CurrentPhase = "importing";
+            await _db.SaveChangesAsync(ct);
+
+            await ImportToDatabaseAsync(enriched, job, options, ct);
+        }
 
         job.Status = ImportJobStatus.Completed;
         job.CompletedAt = DateTime.UtcNow;
@@ -136,6 +151,63 @@ public class GameImportService
             _logger.LogInformation("Game '{Title}' genres: {Genres}", import.Title, string.Join(", ", import.Genres));
         }
         return gamesWithOffers;
+    }
+
+    private async Task<List<(int gameId, List<GameOfferImport> offers)>> CollectTargetedOffersAsync(
+        ImportJob job,
+        ImportPipelineOptions options,
+        CancellationToken ct)
+    {
+        var requestedGameIds = options.GameIds?.Distinct().ToList() ?? new List<int>();
+        if (requestedGameIds.Count == 0)
+            return new();
+
+        var selectedGames = await _db.Games
+            .AsNoTracking()
+            .Where(g => requestedGameIds.Contains(g.GameId))
+            .Select(g => new { g.GameId, g.RawgId })
+            .ToListAsync(ct);
+
+        var selectedByRawgId = selectedGames
+            .Where(g => g.RawgId.HasValue)
+            .ToDictionary(g => g.RawgId!.Value, g => g.GameId);
+
+        var includeIgdbIds = selectedByRawgId.Keys.ToHashSet();
+        var skippedWithoutRawg = selectedGames.Count - includeIgdbIds.Count;
+
+        if (skippedWithoutRawg > 0)
+        {
+            _logger.LogWarning(
+                "Targeted import: {Count} games skipped because they have no IGDB/RawgId mapping",
+                skippedWithoutRawg);
+            job.ErrorCount += skippedWithoutRawg;
+        }
+
+        if (includeIgdbIds.Count == 0)
+            return new();
+
+        var igdbGames = await _igdb.GetPcGamesAsync(
+            includeIgdbIds: includeIgdbIds,
+            ct: ct);
+
+        var result = new List<(int gameId, List<GameOfferImport> offers)>();
+        foreach (var igdbGame in igdbGames)
+        {
+            if (!selectedByRawgId.TryGetValue(igdbGame.Id, out var gameId))
+                continue;
+
+            var offers = BuildOffers(igdbGame);
+            if (offers.Count == 0) continue;
+
+            result.Add((gameId, offers));
+        }
+
+        _logger.LogInformation(
+            "Targeted import: collected offers for {GamesWithOffers} of {RequestedGames} requested games",
+            result.Count,
+            requestedGameIds.Count);
+
+        return result;
     }
 
     private static List<GameOfferImport> BuildOffers(IgdbGame g)
@@ -310,10 +382,11 @@ public class GameImportService
 
         var externalIds = games
             .SelectMany(g => g.Offers.Select(o => o.ExternalId))
+            .Where(id => !string.IsNullOrWhiteSpace(id))
             .Distinct().ToList();
 
         var existingOffers = await _db.GameOffers.AsNoTracking()
-            .Where(o => externalIds.Contains(o.ExternalId))
+            .Where(o => o.ExternalId != null && externalIds.Contains(o.ExternalId))
             .ToDictionaryAsync(o => $"{o.ShopId}:{o.ExternalId}", ct);
 
         var newGames       = new List<Game>();
@@ -498,6 +571,50 @@ public class GameImportService
         if (offersToUpdate.Count > 0) await _db.BulkUpdateAsync(offersToUpdate, cancellationToken: ct);
 
         _cache.Clear();
+    }
+
+    private async Task ImportTargetedOffersAsync(
+        List<(int gameId, List<GameOfferImport> offers)> targetedOffers,
+        ImportJob job,
+        CancellationToken ct)
+    {
+        if (targetedOffers.Count == 0)
+            return;
+
+        var externalIds = targetedOffers
+            .SelectMany(g => g.offers.Select(o => o.ExternalId))
+            .Where(id => !string.IsNullOrWhiteSpace(id))
+            .Distinct()
+            .ToList();
+
+        var existingOffers = await _db.GameOffers
+            .AsNoTracking()
+            .Where(o => o.ExternalId != null && externalIds.Contains(o.ExternalId))
+            .ToDictionaryAsync(o => $"{o.ShopId}:{o.ExternalId}", ct);
+
+        var newOffers = new List<GameOffer>();
+        var offersToUpdate = new List<GameOffer>();
+
+        foreach (var item in targetedOffers)
+        {
+            ProcessOffers(item.gameId, item.offers, existingOffers, newOffers, offersToUpdate);
+        }
+
+        if (newOffers.Count > 0)
+        {
+            var distinctOffers = newOffers
+                .GroupBy(o => new { o.GameId, o.ShopId })
+                .Select(g => g.First())
+                .ToList();
+
+            await _db.BulkInsertAsync(distinctOffers, cancellationToken: ct);
+            job.TotalOffersCreated = distinctOffers.Count;
+        }
+
+        if (offersToUpdate.Count > 0)
+        {
+            await _db.BulkUpdateAsync(offersToUpdate, cancellationToken: ct);
+        }
     }
 
     private void ProcessOffers(

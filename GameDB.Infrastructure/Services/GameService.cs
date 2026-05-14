@@ -17,6 +17,8 @@ public class GameService
             .SqlQueryRaw<GameCatalogRow>("SELECT * FROM vw_game_catalog")
             .AsNoTracking();
 
+        query = query.Where(g => _db.GameOffers.Any(o => o.GameId == g.GameId));
+
         // Database-side filtering
         if (!string.IsNullOrWhiteSpace(search))
             query = query.Where(g => g.Title.Contains(search));

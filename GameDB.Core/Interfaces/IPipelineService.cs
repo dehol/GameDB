@@ -35,6 +35,7 @@ public interface IPipelineService
 public record ImportPipelineOptions(
     int? Limit = null,
     List<int>? IgdbGameIds = null,
+    List<int>? GameIds = null,
     bool OverwriteExisting = false);
 
 public record PipelineStatus(

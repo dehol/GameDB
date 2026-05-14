@@ -93,4 +93,14 @@ export const api = {
   startImportPipeline: (options = {}) => request('/import/start', { method: 'POST', body: JSON.stringify(options) }),
   getImportPipelineStatus: (pipelineId) => request(`/import/status/${pipelineId}`),
   getCurrentImportPipeline: () => request('/import/current'),
+  getAdminGamesManagement: (params = {}) => {
+    const q = new URLSearchParams();
+    if (params.search) q.set('search', params.search);
+    if (params.offersCount !== undefined && params.offersCount !== null) q.set('offersCount', params.offersCount);
+    if (params.page) q.set('page', params.page);
+    if (params.pageSize) q.set('pageSize', params.pageSize);
+    return request(`/admin/games-management?${q}`);
+  },
+  syncOffersForGames: (gameIds) =>
+    request('/admin/games/sync-offers', { method: 'POST', body: JSON.stringify({ gameIds }) }),
 };
